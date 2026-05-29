@@ -16,7 +16,7 @@
 
 [**Releases → 最新版本**](https://github.com/yf-w23/campus-os/releases/latest)
 
-下载 `campus-os-v0.1.0-android-arm64.apk`（约 60 MB），传到 Android 手机安装即可。
+下载 `campus-os-v0.2.0-android-arm64.apk`（约 60 MB），传到 Android 手机安装即可。
 
 - 系统要求：Android 7+（API 24+）
 - 架构：arm64-v8a（2018 年后绝大多数手机都是；32 位 / x86 模拟器暂不支持）
@@ -55,7 +55,7 @@ npm run android           # 另开终端编译 debug 包
 
 ### 首页 `home`
 
-- 今日课表（按时间排序，本地时区，自动从 21 天日历中筛今天）
+- 今日课表（按时间排序，本地时区，从近一个月日历中筛出今天）
 - 待办作业（按截止日排序）
 - 未读通知统计
 - 一键重新同步
@@ -68,7 +68,7 @@ npm run android           # 另开终端编译 debug 包
 - 课件浏览 + in-app PDF / DOCX 预览
 - 作业列表（未交 / 待批 / 已批，含截止时间、补交时间、成绩）
 - 通知列表（含 Base64 内容自动解码）
-- 课表（通过教务系统 `zhjw.cic` 拉 JSONP 日历）
+- 课表（教务系统 `zhjw.cic` 教学日历 `bks_jxrl_all`，经 WebVPN 漫游拉 JSONP、GBK 解码）
 
 ### 校园 `campus` — **全部 native**
 
@@ -81,18 +81,22 @@ npm run android           # 另开终端编译 debug 包
 | 图书馆座位 | `services/campus/library.ts` | 4 层导航：馆 → 楼层（聚合可用数）→ 分区（具体使用率）→ 座位（一键预约）|
 | 研讨间预约 | `services/campus/library.ts` | 浏览研讨间类型 + 全部资源 |
 
-### AI `ai`
+### AI `ai` — **类 ChatGPT 多会话**
 
 - 兼容 OpenAI 协议（DeepSeek / 智谱 / Kimi / Doubao 等都能直接配）
+- **多会话管理**：会话列表首页（标题自动命名、最近预览、相对时间）、开启新对话、进入历史对话继续聊、删除会话
+- **历史持久化**：对话存本地（AsyncStorage），杀进程重启后自动恢复上次对话
+- **上下文记忆**：同一会话内带完整往返历史发送；系统提示注入真实当前日期，避免模型臆测"今天"
 - 只读 Agent：可以问"我今天有什么作业 / 课"、"下周哪些 DDL"，但不会替你提交作业
-- 内置上下文：把你的课表 / 作业 / 通知拼成 prompt
+- 内置上下文：把你的今日课表 / 近期课表 / 待办 / 课程列表拼成 prompt
+- Markdown 渲染带错误边界兜底；RN 不支持流式 body 时自动回退为整体读取，保证有 Key 时稳定出结果
 
 ### 设置 `settings`
 
 - AI Provider 配置（API Key 落 Keychain，永不出设备）
-- 切换中文 / English
+- 切换中文 / English、深色 / 浅色外观
 - 演示模式开关
-- 退出登录（清掉 Keychain + Redux）
+- 退出登录（清掉 Keychain + Redux + 持久化会话标记）
 
 ---
 
@@ -120,7 +124,7 @@ src/
 │   └── ai/               # AI provider adapter
 ├── domain/               # 领域模型 (TypeScript types)
 ├── state/                # Redux Toolkit slices + selectors
-├── storage/              # Keychain（安全）+ AsyncStorage（偏好）
+├── storage/              # Keychain（凭证）+ AsyncStorage（偏好 / 登录态 / AI 会话历史）
 └── utils/                # 编码 / HTML 工具
 ```
 
@@ -152,6 +156,13 @@ operation() 第一次失败
 
 App 重启后内存里凭证清空 —— `hydrateCredentials()` 在第一次需要时从 Keychain 懒加载。同一时刻只允许一个并发 login Promise（避免多操作同时挤兑）。
 
+### 持久化登录（对齐 THU Info）
+
+- 登录成功记会话标记（学号）到 AsyncStorage，密码 / 设备指纹存 Keychain
+- 复用上次的设备指纹（不每次新建），信任设备得以累积、尽量跳过 2FA
+- 启动时若有会话标记且 Keychain 有凭证 → **乐观进入主界面**，首屏同步经 `withSessionRecovery` 用保存的凭证静默续期；Cookie 过期通常无感
+- 只有"退出登录"才清凭证 + 会话标记
+
 ### 字符编码（GBK 子系统）
 
 教务系统 / 电费 / 选课等老 ASP/Java 后端返回 **GBK** 编码，URL 里建筑名也要 GBK percent-encode：
@@ -176,7 +187,7 @@ App 重启后内存里凭证清空 —— `hydrateCredentials()` 在第一次需
 - 仅支持 Android arm64-v8a；iOS 工程在仓库里但未在真机验证过
 - 图书馆座位**预约**已实现；研讨间预约只读（下单仍走小程序）
 - AI Agent 只能读你的课表 / 作业 / 通知；不能直接调 WebVPN 接口（设计如此）
-- 课程评估、培养方案、选课等 thu-info-app 有的功能 v0.1 暂未做
+- 课程评估、培养方案、选课等 thu-info-app 有的功能暂未做
 - 设备指纹信任过期（罕见，约几个月一次）时 Layer 2 自动重登录会触发 2FA，此时需要手动重登录
 
 ---
