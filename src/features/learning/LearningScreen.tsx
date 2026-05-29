@@ -1,9 +1,10 @@
 import React, {useMemo, useState} from 'react';
 import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import {useSelector} from 'react-redux';
 import {useTranslation} from '../../app/i18n';
 import {colors, radii, spacing, typography} from '../../app/theme';
-import {Badge, EmptyState, ListCard} from '../common/components/Ui';
+import {Badge, EmptyState, ListCard, ScreenHeader} from '../common/components/Ui';
 import {selectLearning} from '../../state/selectors';
 import {HomeworkStatus} from '../../domain/learning';
 import {stripHtml} from '../../utils/html';
@@ -55,8 +56,15 @@ export function LearningScreen({navigation}: Props) {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>{t.learning.title}</Text>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}>
+      <ScreenHeader
+        eyebrow={t.tabs.learning}
+        title={t.learning.title}
+        subtitle={`${counts.courses} 课程 · ${counts.homework} 作业 · ${counts.notifications} 通知`}
+      />
 
       <View style={styles.segment}>
         {tabs.map(item => {
@@ -181,19 +189,23 @@ export function LearningScreen({navigation}: Props) {
           <EmptyState title="暂无资料" />
         )
       ) : null}
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  content: {padding: spacing.lg, paddingBottom: spacing.xxl + spacing.xl},
-  title: {...typography.h1, color: colors.text, marginBottom: spacing.md},
+  content: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xxl + spacing.xl,
+  },
   segment: {
     flexDirection: 'row',
     backgroundColor: colors.surfaceAlt,
     borderRadius: radii.md,
-    padding: 4,
+    padding: 3,
     marginBottom: spacing.lg,
   },
   segmentItem: {
@@ -201,14 +213,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.sm + 2,
     borderRadius: radii.sm,
     gap: 4,
   },
   segmentItemActive: {
     backgroundColor: colors.surface,
   },
-  segmentText: {...typography.caption, color: colors.textSecondary},
+  segmentText: {...typography.caption, color: colors.textMuted},
   segmentTextActive: {color: colors.text, fontWeight: '600'},
   segmentCount: {...typography.micro, color: colors.textMuted},
   segmentCountActive: {color: colors.primary},
@@ -218,7 +230,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.sm,
   },
-  cardTitle: {...typography.label, color: colors.text, flex: 1},
+  cardTitle: {...typography.label, color: colors.text, flex: 1, fontSize: 15},
   cardMeta: {...typography.caption, color: colors.textSecondary},
-  cardBody: {...typography.caption, color: colors.text, marginTop: 2},
+  cardBody: {...typography.caption, color: colors.textSecondary, marginTop: 2},
 });

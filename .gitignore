@@ -55,6 +55,11 @@ yarn-error.log
 # Bundle artifact
 *.jsbundle
 
+# RN release 打包生成的产物（bundle + 拷进 res 的 drawable/raw），不入库
+android/app/src/main/assets/index.android.bundle
+android/app/src/main/res/drawable-*/src_*
+android/app/src/main/res/raw/*
+
 # Ruby / CocoaPods
 **/Pods/
 /vendor/bundle/
@@ -81,6 +86,10 @@ tsc-out.txt
 jest-out.txt
 *.apk
 *.aab
+*.log
+gradle-build*.log
+release-build.log
+ui-*.xml
 
 # IDE
 .vscode/

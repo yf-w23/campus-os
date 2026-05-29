@@ -28,8 +28,25 @@ export interface LoginResult {
   diagnostic?: string;
 }
 
+export type TwoFactorPrompt = {
+  approaches: TwoFactorApproach[];
+  reason: string;
+};
+
+export type TwoFactorHandler = (
+  prompt: TwoFactorPrompt,
+) => Promise<{type: TwoFactorApproach['type']; code: string} | null>;
+
 const LOGIN_SUCCESS_MARK = '登录成功。正在重定向到';
 const TWO_FACTOR_MARK = '二次认证';
+
+/** 子系统 roam 时清华可能再次弹出 2FA（thu-info-lib 会在 roam 内再跑一轮 twoFactorAuth） */
+class RoamTwoFactorError extends Error {
+  constructor(public readonly payload: string) {
+    super(`roamId(${payload}): 2FA reappeared`);
+    this.name = 'RoamTwoFactorError';
+  }
+}
 
 export function createFingerprint(): string {
   return uuidv4().replace(/-/g, '');
@@ -67,6 +84,13 @@ export class TsinghuaAuthService {
 
   /** 同一时刻只允许一个完整重登录 Promise 在跑 */
   private reloginInflight: Promise<void> | null = null;
+
+  /** roam 阶段再次 2FA 时，由 LoginScreen 注入以收集第二轮验证码 */
+  private twoFactorHandler: TwoFactorHandler | null = null;
+
+  setTwoFactorHandler(handler: TwoFactorHandler | null) {
+    this.twoFactorHandler = handler;
+  }
 
   getCachedCredentials(): CampusCredentials | null {
     return this.cachedCredentials;
@@ -188,60 +212,12 @@ export class TsinghuaAuthService {
     trustDevice = true,
   ): Promise<LoginResult> {
     try {
-      this.addTrace(`2fa-verify type=${type}`);
-      const action = type === 'totp' ? 'VERITY_TOTP_CODE' : 'VERITY_CODE';
-      const verifyResponse = await webvpnTransport.fetchText(
-        ENDPOINTS.doubleAuth,
-        {
-          body: {
-            action,
-            type,
-            vericode: code,
-          },
-        },
+      const redirectHtml = await this.submitTwoFactorCode(
+        credentials,
+        type,
+        code,
+        trustDevice,
       );
-
-      let parsed: {
-        result?: string;
-        msg?: string;
-        object?: {redirectUrl?: string};
-      };
-      try {
-        parsed = JSON.parse(verifyResponse);
-      } catch {
-        return this.errorResult('验证码错误或已过期');
-      }
-      if (parsed.result !== 'success') {
-        return this.errorResult(parsed.msg || '验证码错误或已过期');
-      }
-      this.addTrace('2fa-ok');
-
-      // 注册设备指纹（信任本设备）
-      if (trustDevice) {
-        try {
-          await webvpnTransport.fetchText(ENDPOINTS.saveFinger, {
-            body: {
-              fingerprint: credentials.fingerprint,
-              deviceName: 'CampusOS',
-              radioVal: '是',
-            },
-          });
-          this.addTrace('saveFinger');
-        } catch {
-          // ignore
-        }
-      }
-
-      if (!parsed.object?.redirectUrl) {
-        return this.errorResult('2FA 返回缺少 redirectUrl');
-      }
-
-      // 跟随 2FA redirect URL — 服务端会返回"登录成功"页 + callback href
-      const redirectHtml = await webvpnTransport.fetchText(
-        `${ID_HOST_URL}${parsed.object.redirectUrl}`,
-      );
-      this.addTrace(`2fa-redirect=${redirectHtml.length}`);
-
       this.pendingTwoFactor = null;
       return await this.completeAfterIdAuth(credentials, redirectHtml);
     } catch (error) {
@@ -249,6 +225,91 @@ export class TsinghuaAuthService {
         error instanceof Error ? error.message : '二次认证失败',
       );
     }
+  }
+
+  /**
+   * 提交 2FA 验证码并跟随 redirect，返回 id 登录成功页 HTML。
+   * roam 内联二次认证与 verifyTwoFactor 共用。
+   */
+  private async submitTwoFactorCode(
+    credentials: CampusCredentials,
+    type: TwoFactorApproach['type'],
+    code: string,
+    trustDevice = true,
+  ): Promise<string> {
+    this.addTrace(`2fa-verify type=${type}`);
+    const action = type === 'totp' ? 'VERITY_TOTP_CODE' : 'VERITY_CODE';
+    const verifyResponse = await webvpnTransport.fetchText(ENDPOINTS.doubleAuth, {
+      body: {
+        action,
+        type,
+        vericode: code,
+      },
+    });
+
+    let parsed: {
+      result?: string;
+      msg?: string;
+      object?: {redirectUrl?: string};
+    };
+    try {
+      parsed = JSON.parse(verifyResponse);
+    } catch {
+      throw new Error('验证码错误或已过期');
+    }
+    if (parsed.result !== 'success') {
+      throw new Error(parsed.msg || '验证码错误或已过期');
+    }
+    this.addTrace('2fa-ok');
+
+    if (trustDevice) {
+      try {
+        await webvpnTransport.fetchText(ENDPOINTS.saveFinger, {
+          body: {
+            fingerprint: credentials.fingerprint,
+            deviceName: 'CampusOS',
+            radioVal: '是',
+          },
+        });
+        this.addTrace('saveFinger');
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!parsed.object?.redirectUrl) {
+      throw new Error('2FA 返回缺少 redirectUrl');
+    }
+
+    const redirectHtml = await webvpnTransport.fetchText(
+      `${ID_HOST_URL}${parsed.object.redirectUrl}`,
+    );
+    this.addTrace(`2fa-redirect=${redirectHtml.length}`);
+    return redirectHtml;
+  }
+
+  /**
+   * thu-info-lib roam 内遇到 2FA 时 inline 再跑一轮 twoFactorAuth。
+   * 需要 LoginScreen 通过 setTwoFactorHandler 提供第二轮验证码。
+   */
+  private async performTwoFactor(
+    credentials: CampusCredentials,
+    reason: string,
+  ): Promise<string> {
+    if (!this.twoFactorHandler) {
+      throw new RoamTwoFactorError(reason);
+    }
+    const approaches = await this.fetchTwoFactorApproaches();
+    const input = await this.twoFactorHandler({approaches, reason});
+    if (!input) {
+      throw new Error('二次认证已取消');
+    }
+    return this.submitTwoFactorCode(
+      credentials,
+      input.type,
+      input.code,
+      true,
+    );
   }
 
   async fetchTwoFactorApproaches(): Promise<TwoFactorApproach[]> {
@@ -329,6 +390,19 @@ export class TsinghuaAuthService {
       await this.roamIdPolicy(credentials, INFO_PORTAL_YYFWID);
       this.addTrace('info-roam');
     } catch (e) {
+      if (e instanceof RoamTwoFactorError) {
+        this.pendingTwoFactor = {credentials};
+        return {
+          session: {
+            isAuthenticated: false,
+            webvpnReady: false,
+            studentId: credentials.studentId,
+          },
+          status: 'two_factor',
+          twoFactorApproaches: await this.fetchTwoFactorApproaches(),
+          error: '校园门户漫游需要再次二次认证，请重新验证',
+        };
+      }
       return this.errorResult(
         `info portal 漫游失败：${(e as Error).message}`,
       );
@@ -432,7 +506,16 @@ export class TsinghuaAuthService {
         },
       });
       if (response.includes(TWO_FACTOR_MARK)) {
-        throw new Error(`roamId(${payload}): 2FA reappeared`);
+        response = await this.performTwoFactor(
+          credentials,
+          '校园门户漫游需要再次二次认证，请重新验证',
+        );
+        if (response.includes(TWO_FACTOR_MARK)) {
+          throw new RoamTwoFactorError(payload);
+        }
+        if (response.includes(LOGIN_SUCCESS_MARK)) {
+          break;
+        }
       }
       if (response.includes(LOGIN_SUCCESS_MARK)) {
         break;

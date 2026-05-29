@@ -136,7 +136,7 @@ function Header({
   return (
     <View style={styles.header}>
       <Pressable onPress={onBack} hitSlop={12} style={styles.back}>
-        <Text style={styles.backText}>← 返回</Text>
+        <Text style={styles.chevron}>‹</Text>
       </Pressable>
       <Text style={styles.title} numberOfLines={1}>
         {title}
@@ -159,15 +159,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    backgroundColor: colors.background,
     gap: spacing.sm,
+    minHeight: 52,
   },
-  back: {paddingVertical: 4, paddingRight: spacing.sm, minWidth: 64},
-  backText: {...typography.body, color: colors.primary},
+  back: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: -spacing.xs,
+  },
+  chevron: {
+    fontSize: 32,
+    color: colors.text,
+    lineHeight: 32,
+    marginTop: -4,
+    fontWeight: '300',
+  },
   title: {...typography.h3, color: colors.text, flex: 1, textAlign: 'center'},
-  external: {paddingVertical: 4, paddingLeft: spacing.sm, minWidth: 64, alignItems: 'flex-end'},
+  external: {
+    minWidth: 60,
+    height: 40,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
   externalText: {...typography.body, color: colors.primary},
   webWrap: {flex: 1, backgroundColor: colors.background},
   web: {flex: 1, backgroundColor: 'transparent'},
@@ -175,7 +191,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.7)',
+    backgroundColor: 'rgba(10, 10, 11, 0.6)',
     gap: spacing.sm,
   },
   loadingText: {...typography.caption, color: colors.textSecondary},

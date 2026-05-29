@@ -47,10 +47,10 @@ function statusInfo(status: number): {label: string; tone: 'ok' | 'warn' | 'bad'
 }
 
 const TONE_COLOR: Record<'ok' | 'warn' | 'bad' | 'mute', string> = {
-  ok: '#10B981',
-  warn: '#F59E0B',
-  bad: '#EF4444',
-  mute: '#94A3B8',
+  ok: colors.success,
+  warn: colors.warning,
+  bad: colors.error,
+  mute: colors.textMuted,
 };
 
 export function LibrarySectionScreen({navigation, route}: Props) {
@@ -363,7 +363,7 @@ const styles = StyleSheet.create({
   },
   filterChipActive: {
     borderColor: colors.primary,
-    backgroundColor: '#E3F2FD',
+    backgroundColor: colors.primaryMuted,
   },
   filterChipText: {...typography.micro, color: colors.textSecondary},
   filterChipTextActive: {color: colors.primary, fontWeight: '600'},
@@ -418,5 +418,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderRadius: radii.md,
   },
-  retryText: {...typography.label, color: '#fff'},
+  retryText: {...typography.label, color: colors.textInvert},
 });

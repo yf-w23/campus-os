@@ -2,12 +2,13 @@ import React from 'react';
 import {
   ActivityIndicator,
   Image,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import {colors, spacing, typography} from '../../../app/theme';
+import {colors, radii, spacing, typography} from '../../../app/theme';
 
 interface TabIconProps {
   focused: boolean;
@@ -15,14 +16,29 @@ interface TabIconProps {
   label: string;
 }
 
+/**
+ * Tab 图标按 iOS app-icon 瓷砖渲染：圆角方块 + 细 hairline 边框，
+ * 图标自带的白色画布即是瓷砖面。tintColor 会把整张白底也染色变成纯色块，
+ * 这里不用 tint。
+ */
 export function TabIcon({focused, source, label}: TabIconProps) {
   return (
-    <View style={styles.container}>
-      <Image
-        source={source}
-        style={[styles.icon, focused ? styles.iconFocused : styles.iconDefault]}
-      />
-      <Text style={[styles.label, focused && styles.labelFocused]}>{label}</Text>
+    <View style={styles.tabItem}>
+      <View
+        style={[
+          styles.tabIconWrap,
+          {opacity: focused ? 1 : 0.55, transform: [{scale: focused ? 1 : 0.94}]},
+        ]}>
+        <View
+          style={[
+            styles.tabIconTile,
+            focused ? styles.tabIconTileFocused : styles.tabIconTileDefault,
+          ]}>
+          <Image source={source} style={styles.tabIconImg} />
+        </View>
+      </View>
+      <Text style={[styles.tabLabel, focused && styles.tabLabelFocused]}>{label}</Text>
+      <View style={[styles.tabDot, focused && styles.tabDotFocused]} />
     </View>
   );
 }
@@ -43,30 +59,27 @@ export function PrimaryButton({
   variant = 'primary',
 }: PrimaryButtonProps) {
   const isDisabled = disabled || loading;
+  const isGhost = variant === 'ghost';
 
   return (
     <Pressable
       style={({pressed}) => [
         styles.button,
-        variant === 'ghost'
-          ? styles.buttonGhost
-          : variant === 'accent'
-            ? styles.buttonAccent
-            : styles.buttonPrimary,
+        isGhost ? styles.buttonGhost : styles.buttonPrimary,
         isDisabled && styles.buttonDisabled,
         pressed && !isDisabled && styles.buttonPressed,
       ]}
       onPress={onPress}
       disabled={isDisabled}
-      android_ripple={{color: 'rgba(255,255,255,0.2)'}}
+      android_ripple={{color: 'rgba(255,255,255,0.06)'}}
       hitSlop={8}>
       {loading ? (
-        <ActivityIndicator color={variant === 'ghost' ? colors.primary : '#fff'} />
+        <ActivityIndicator color={isGhost ? colors.text : colors.textInvert} />
       ) : (
         <Text
           style={[
             styles.buttonText,
-            variant === 'ghost' ? styles.buttonTextGhost : styles.buttonTextPrimary,
+            isGhost ? styles.buttonTextGhost : styles.buttonTextPrimary,
           ]}>
           {label}
         </Text>
@@ -76,34 +89,68 @@ export function PrimaryButton({
 }
 
 const styles = StyleSheet.create({
-  container: {
+  // tab bar item
+  tabItem: {
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 3,
+    minWidth: 56,
+    paddingTop: 2,
   },
-  icon: {
+  tabIconWrap: {},
+  tabIconTile: {
     width: 28,
     height: 28,
-    resizeMode: 'contain',
+    borderRadius: 7,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
   },
-  iconFocused: {
-    opacity: 1,
-    transform: [{scale: 1.05}],
+  tabIconTileFocused: {
+    borderColor: colors.primary,
+    ...Platform.select({
+      ios: {
+        shadowColor: colors.primary,
+        shadowOffset: {width: 0, height: 2},
+        shadowOpacity: 0.35,
+        shadowRadius: 6,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
-  iconDefault: {
-    opacity: 0.55,
+  tabIconTileDefault: {},
+  tabIconImg: {
+    width: 28,
+    height: 28,
+    resizeMode: 'cover',
   },
-  label: {
-    ...typography.caption,
+  tabLabel: {
+    fontSize: 10,
+    letterSpacing: 0.2,
     color: colors.textMuted,
+    fontWeight: '500',
   },
-  labelFocused: {
+  tabLabelFocused: {
     color: colors.primary,
     fontWeight: '600',
   },
+  tabDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'transparent',
+    marginTop: 1,
+  },
+  tabDotFocused: {
+    backgroundColor: colors.primary,
+  },
+
+  // primary button — pill 矩形混合，大圆角 + 实色填充
   button: {
-    minHeight: 48,
-    borderRadius: 14,
+    minHeight: 52,
+    borderRadius: radii.lg,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
     alignItems: 'center',
@@ -112,25 +159,25 @@ const styles = StyleSheet.create({
   buttonPrimary: {
     backgroundColor: colors.primary,
   },
-  buttonAccent: {
-    backgroundColor: colors.accent,
-  },
   buttonGhost: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
   },
   buttonDisabled: {
-    opacity: 0.55,
+    opacity: 0.4,
   },
   buttonPressed: {
     opacity: 0.85,
+    transform: [{scale: 0.99}],
   },
   buttonText: {
     ...typography.label,
+    letterSpacing: 0.1,
   },
   buttonTextPrimary: {
-    color: '#fff',
+    color: colors.textInvert,
+    fontWeight: '600',
   },
   buttonTextGhost: {
     color: colors.text,

@@ -8,7 +8,9 @@ import {
   Text,
   View,
 } from 'react-native';
-import {colors, radii, shadows, spacing, typography} from '../../app/theme';
+import {SafeAreaView} from 'react-native-safe-area-context';
+import {colors, radii, spacing, typography} from '../../app/theme';
+import {ScreenHeader} from '../common/components/Ui';
 import {RootStackParamList} from '../../app/navigation/types';
 
 interface Props {
@@ -20,7 +22,6 @@ interface Entry {
   title: string;
   subtitle: string;
   icon: ImageSourcePropType;
-  accent: string;
 }
 
 const entries: Entry[] = [
@@ -29,92 +30,125 @@ const entries: Entry[] = [
     title: '教室查询',
     subtitle: '查看教室占用情况',
     icon: require('../../assets/campus/classroom.png'),
-    accent: '#3B82F6',
   },
   {
     key: 'CampusGrades',
     title: '成绩查询',
     subtitle: '本学期与历史成绩',
     icon: require('../../assets/campus/grades.png'),
-    accent: '#10B981',
   },
   {
     key: 'CampusPEtest',
     title: '体测成绩',
-    subtitle: '体育测试详情与历史',
+    subtitle: '体测详情与历史',
     icon: require('../../assets/campus/petest.png'),
-    accent: '#F59E0B',
   },
   {
     key: 'CampusDormitory',
-    title: '宿舍信息',
-    subtitle: '电费、报修、健康打卡',
+    title: '宿舍服务',
+    subtitle: '电费、健康打卡',
     icon: require('../../assets/campus/dormitory.png'),
-    accent: '#8B5CF6',
   },
   {
     key: 'CampusReservation',
     title: '场馆预约',
-    subtitle: '图书馆、体育馆等',
+    subtitle: '图书馆、研讨间',
     icon: require('../../assets/campus/reservation.png'),
-    accent: '#06B6D4',
   },
 ];
 
 export function CampusScreen({navigation}: Props) {
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>校园</Text>
-      <Text style={styles.subtitle}>清华校园生活服务一站式入口</Text>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}>
+        <ScreenHeader
+          eyebrow="校园"
+          title="清华校园服务"
+          subtitle="教室 · 成绩 · 体测 · 宿舍 · 场馆"
+        />
 
-      <View style={styles.grid}>
-        {entries.map(entry => (
-          <Pressable
-            key={entry.key}
-            style={({pressed}) => [styles.card, pressed && styles.cardPressed]}
-            onPress={() => navigation.navigate(entry.key)}>
-            <View style={[styles.iconWrap, {backgroundColor: entry.accent + '1A'}]}>
-              <Image source={entry.icon} style={styles.icon} />
-            </View>
-            <Text style={styles.cardTitle}>{entry.title}</Text>
-            <Text style={styles.cardSub}>{entry.subtitle}</Text>
-          </Pressable>
-        ))}
-      </View>
-    </ScrollView>
+        <View style={styles.list}>
+          {entries.map((entry, idx) => (
+            <Pressable
+              key={entry.key}
+              style={({pressed}) => [
+                styles.row,
+                idx > 0 && styles.rowDivider,
+                pressed && styles.rowPressed,
+              ]}
+              onPress={() => navigation.navigate(entry.key)}>
+              <View style={styles.iconWrap}>
+                <Image source={entry.icon} style={styles.icon} />
+              </View>
+              <View style={styles.rowBody}>
+                <Text style={styles.rowTitle}>{entry.title}</Text>
+                <Text style={styles.rowSub}>{entry.subtitle}</Text>
+              </View>
+              <Text style={styles.chev}>›</Text>
+            </Pressable>
+          ))}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  content: {padding: spacing.lg, paddingBottom: spacing.xxl + spacing.xl},
-  title: {...typography.h1, color: colors.text},
-  subtitle: {...typography.caption, color: colors.textSecondary, marginBottom: spacing.lg},
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
+  content: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xxl + spacing.xl,
   },
-  card: {
-    width: '47.5%',
+  list: {
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
-    padding: spacing.lg,
-    gap: spacing.sm,
-    ...shadows.soft,
     borderWidth: 1,
     borderColor: colors.borderSubtle,
+    overflow: 'hidden',
   },
-  cardPressed: {opacity: 0.85, transform: [{scale: 0.98}]},
-  iconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: radii.md,
+  row: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.xs,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    gap: spacing.md,
   },
-  icon: {width: 36, height: 36, resizeMode: 'contain'},
-  cardTitle: {...typography.h3, color: colors.text},
-  cardSub: {...typography.caption, color: colors.textSecondary},
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.divider,
+  },
+  rowPressed: {
+    backgroundColor: colors.surfaceAlt,
+  },
+  iconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  icon: {
+    width: 40,
+    height: 40,
+    resizeMode: 'cover',
+  },
+  rowBody: {flex: 1, gap: 2},
+  rowTitle: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  rowSub: {
+    ...typography.caption,
+    color: colors.textMuted,
+  },
+  chev: {
+    fontSize: 22,
+    color: colors.textMuted,
+    fontWeight: '300',
+  },
 });

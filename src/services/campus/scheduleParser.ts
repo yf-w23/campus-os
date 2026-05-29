@@ -11,15 +11,18 @@ interface RawScheduleRow {
 }
 
 export function parseJsonpSchedule(raw: string): RawScheduleRow[] {
-  if (!raw.startsWith('m')) {
-    throw new Error('Invalid schedule JSONP response');
-  }
+  // jsoncallback=m 返回形如 `m([...])`；与 thu-info 一致只取首个 '[' 到末个 ']'。
+  // 不强校验 'm' 前缀（可能有 BOM / 空白 / 包装差异），取不到数组就返回空。
   const start = raw.indexOf('[');
   const end = raw.lastIndexOf(']');
-  if (start < 0 || end < 0) {
+  if (start < 0 || end < 0 || end <= start) {
     return [];
   }
-  return JSON.parse(raw.slice(start, end + 1)) as RawScheduleRow[];
+  try {
+    return JSON.parse(raw.slice(start, end + 1)) as RawScheduleRow[];
+  } catch {
+    return [];
+  }
 }
 
 export function normalizeScheduleTime(value: string): string {

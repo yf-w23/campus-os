@@ -1,13 +1,17 @@
 import React from 'react';
 import {Pressable, StyleSheet, Text, TextStyle, View, ViewStyle} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import {colors, radii, shadows, spacing, typography} from '../../../app/theme';
+import {colors, radii, spacing, typography} from '../../../app/theme';
 
 interface GradientCardProps {
   children: React.ReactNode;
   style?: ViewStyle;
 }
 
+/**
+ * Hero / 重点卡。深色 UI 下使用极淡的 violet→surface 渐变 +
+ * 细 hairline 边框，给出层级但不显"web dashboard"。
+ */
 export function GradientCard({children, style}: GradientCardProps) {
   return (
     <LinearGradient
@@ -17,6 +21,30 @@ export function GradientCard({children, style}: GradientCardProps) {
       style={[styles.gradient, style]}>
       {children}
     </LinearGradient>
+  );
+}
+
+interface ScreenHeaderProps {
+  title: string;
+  subtitle?: string;
+  eyebrow?: string;
+  right?: React.ReactNode;
+}
+
+/**
+ * 统一屏幕标题。比 hero display 克制：~22px 标题 + 可选 eyebrow / 副标题，
+ * 借小字距与层次营造「高级但不张扬」的观感。
+ */
+export function ScreenHeader({title, subtitle, eyebrow, right}: ScreenHeaderProps) {
+  return (
+    <View style={styles.screenHeader}>
+      <View style={styles.screenHeaderText}>
+        {eyebrow ? <Text style={styles.screenEyebrow}>{eyebrow}</Text> : null}
+        <Text style={styles.screenTitle}>{title}</Text>
+        {subtitle ? <Text style={styles.screenSubtitle}>{subtitle}</Text> : null}
+      </View>
+      {right ? <View style={styles.screenHeaderRight}>{right}</View> : null}
+    </View>
   );
 }
 
@@ -81,17 +109,23 @@ const accentMap = {
   success: colors.success,
   warning: colors.warning,
   error: colors.error,
-  neutral: colors.border,
+  neutral: 'transparent',
 } as const;
 
 /**
- * shadcn 风格列表卡：左侧细色彩条 + 极淡阴影 + 按下微缩放。
+ * 列表卡：纯 surface + 1px hairline 边框 + 大圆角。
+ * 左侧 2px 强调色条只在非 neutral 时显示，作为身份提示。
  */
 export function ListCard({children, onPress, accent = 'neutral', style}: ListCardProps) {
+  const showBar = accent !== 'neutral';
   const Inner = (
-    <View style={[styles.listCard, shadows.soft, style]}>
-      <View style={[styles.listCardBar, {backgroundColor: accentMap[accent]}]} />
-      <View style={styles.listCardBody}>{children}</View>
+    <View style={[styles.listCard, style]}>
+      {showBar ? (
+        <View style={[styles.listCardBar, {backgroundColor: accentMap[accent]}]} />
+      ) : null}
+      <View style={[styles.listCardBody, showBar && styles.listCardBodyWithBar]}>
+        {children}
+      </View>
     </View>
   );
   if (!onPress) {
@@ -100,7 +134,7 @@ export function ListCard({children, onPress, accent = 'neutral', style}: ListCar
   return (
     <Pressable
       onPress={onPress}
-      style={({pressed}) => [pressed && styles.cardPressed, styles.cardOuter]}>
+      style={({pressed}) => [styles.cardOuter, pressed && styles.cardPressed]}>
       {Inner}
     </Pressable>
   );
@@ -116,18 +150,18 @@ interface DetailHeaderProps {
 export function DetailHeader({title, onBack, rightLabel, onRight}: DetailHeaderProps) {
   return (
     <View style={styles.detailHeader}>
-      <Pressable onPress={onBack} hitSlop={12} style={styles.headerSide}>
-        <Text style={styles.headerSideText}>← 返回</Text>
+      <Pressable onPress={onBack} hitSlop={12} style={styles.headerBack}>
+        <Text style={styles.headerChevron}>‹</Text>
       </Pressable>
       <Text style={styles.headerTitle} numberOfLines={1}>
         {title}
       </Text>
       {rightLabel ? (
-        <Pressable onPress={onRight} hitSlop={12} style={styles.headerSide}>
-          <Text style={styles.headerSideText}>{rightLabel}</Text>
+        <Pressable onPress={onRight} hitSlop={12} style={styles.headerRight}>
+          <Text style={styles.headerRightText}>{rightLabel}</Text>
         </Pressable>
       ) : (
-        <View style={styles.headerSide} />
+        <View style={styles.headerRight} />
       )}
     </View>
   );
@@ -153,34 +187,70 @@ const styles = StyleSheet.create({
     borderRadius: radii.xl,
     padding: spacing.lg,
     marginBottom: spacing.md,
-    ...shadows.medium,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
   },
-  sectionHeader: {
+  screenHeader: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
-    marginTop: spacing.md,
+    marginBottom: spacing.lg,
+    gap: spacing.md,
+  },
+  screenHeaderText: {flex: 1},
+  screenHeaderRight: {paddingBottom: 2},
+  screenEyebrow: {
+    ...typography.micro,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1.4,
+    marginBottom: 6,
+  },
+  screenTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+    lineHeight: 28,
+    color: colors.text,
+  },
+  screenSubtitle: {
+    ...typography.caption,
+    color: colors.textMuted,
+    marginTop: 5,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.lg,
     marginBottom: spacing.sm,
   },
-  sectionTitle: {...typography.h2, color: colors.text},
+  sectionTitle: {
+    ...typography.label,
+    color: colors.textSecondary,
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+    fontSize: 12,
+  },
   action: {...typography.label, color: colors.primary},
   badge: {
     ...typography.micro,
     alignSelf: 'flex-start',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: radii.pill,
     overflow: 'hidden',
+    fontWeight: '600',
   },
   emptyWrap: {
     alignItems: 'center',
-    paddingVertical: spacing.xl,
+    paddingVertical: spacing.xxl,
     gap: spacing.xs,
   },
   emptyTitle: {...typography.body, color: colors.textSecondary, textAlign: 'center'},
   emptyDesc: {...typography.caption, color: colors.textMuted, textAlign: 'center'},
   cardOuter: {marginBottom: spacing.sm},
-  cardPressed: {opacity: 0.85, transform: [{scale: 0.99}]},
+  cardPressed: {opacity: 0.7},
   listCard: {
     flexDirection: 'row',
     backgroundColor: colors.surface,
@@ -189,23 +259,42 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderSubtle,
   },
-  listCardBar: {width: 3},
-  listCardBody: {flex: 1, padding: spacing.md, gap: spacing.xs},
+  listCardBar: {width: 2},
+  listCardBody: {flex: 1, padding: spacing.md, gap: 6},
+  listCardBodyWithBar: {paddingLeft: spacing.md - 2},
   detailHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.divider,
+    backgroundColor: colors.background,
+    minHeight: 52,
   },
-  headerSide: {minWidth: 64, paddingVertical: 4},
-  headerSideText: {...typography.body, color: colors.primary},
+  headerBack: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: -spacing.xs,
+  },
+  headerChevron: {
+    fontSize: 32,
+    color: colors.text,
+    lineHeight: 32,
+    marginTop: -4,
+    fontWeight: '300',
+  },
+  headerRight: {
+    minWidth: 60,
+    height: 40,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  headerRightText: {...typography.body, color: colors.primary},
   headerTitle: {...typography.h3, color: colors.text, flex: 1, textAlign: 'center'},
   infoRow: {
     flexDirection: 'row',
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md - 2,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.divider,
     gap: spacing.md,

@@ -153,7 +153,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderRadius: radii.md,
   },
-  retryText: {...typography.label, color: '#fff'},
+  retryText: {...typography.label, color: colors.textInvert},
   summaryCard: {
     flexDirection: 'row',
     backgroundColor: colors.surface,

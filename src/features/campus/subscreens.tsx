@@ -33,19 +33,19 @@ export function DormitoryScreen({navigation}: EntryScreenProps<'CampusDormitory'
           title: '电费余额',
           subtitle: '查询当前余额与更新时间',
           url: DORM_ELE_DETAIL_URL,
-          accent: '#7C3AED',
+          accent: '#A78BFA',
         },
         {
           title: '电费充值',
           subtitle: '在线给宿舍房间充值',
           url: DORM_ELE_URL,
-          accent: '#8B5CF6',
+          accent: '#A78BFA',
         },
         {
           title: '宿舍服务系统',
           subtitle: '健康打卡、报修与公告',
           url: DORM_HEALTH_URL,
-          accent: '#A855F7',
+          accent: '#A78BFA',
         },
       ]}
     />

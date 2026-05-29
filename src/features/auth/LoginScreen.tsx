@@ -21,7 +21,7 @@ function toast(msg: string) {
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useDispatch, useSelector} from 'react-redux';
 import {useTranslation} from '../../app/i18n';
-import {colors, spacing, typography} from '../../app/theme';
+import {colors, radii, spacing, typography} from '../../app/theme';
 import {PrimaryButton} from '../common/components/Buttons';
 import {
   createFingerprint,
@@ -37,7 +37,10 @@ import {
   setTwoFactor,
 } from '../../state/slices/authSlice';
 import {selectAuth} from '../../state/selectors';
-import {setDemoMode as persistDemoMode} from '../../storage/preferencesStorage';
+import {
+  setDemoMode as persistDemoMode,
+  setSessionStudentId,
+} from '../../storage/preferencesStorage';
 import {AppDispatch} from '../../state/store';
 import {syncCampusData} from '../../state/thunks/syncCampusData';
 import {resetLearningDemo} from '../../state/slices/learningSlice';
@@ -53,12 +56,18 @@ export function LoginScreen() {
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const credentialsRef = useRef<CampusCredentials | null>(null);
+  const savedFingerprintRef = useRef<string | null>(null);
+  const pendingTwoFactorResolveRef = useRef<
+    ((value: {type: TwoFactorApproach['type']; code: string} | null) => void) | null
+  >(null);
 
   useEffect(() => {
     loadCredentials().then(saved => {
       if (saved) {
         setStudentId(saved.studentId);
         setPassword(saved.password);
+        // 复用上次登录的设备指纹 —— 与 THU Info 一致，信任设备得以累积、跳过 2FA。
+        savedFingerprintRef.current = saved.fingerprint || null;
       }
     });
   }, []);
@@ -83,6 +92,7 @@ export function LoginScreen() {
       }),
     );
     await persistDemoMode(false);
+    await setSessionStudentId(id);
     await syncCampusDataAfterLogin();
   };
 
@@ -94,7 +104,7 @@ export function LoginScreen() {
     let fingerprint: string;
     let credentials: CampusCredentials;
     try {
-      fingerprint = createFingerprint();
+      fingerprint = savedFingerprintRef.current ?? createFingerprint();
       credentials = {studentId: studentId.trim(), password, fingerprint};
       credentialsRef.current = credentials;
       setSubmitting(true);
@@ -135,7 +145,10 @@ export function LoginScreen() {
   };
 
   const handleSendTwoFactorCode = async () => {
-    if (!auth.selectedTwoFactor || submitting) {
+    if (!auth.selectedTwoFactor) {
+      return;
+    }
+    if (submitting && !pendingTwoFactorResolveRef.current) {
       return;
     }
     setSubmitting(true);
@@ -155,13 +168,47 @@ export function LoginScreen() {
     if (
       !credentials ||
       !auth.selectedTwoFactor ||
-      !twoFactorCode.trim() ||
-      submitting
+      !twoFactorCode.trim()
     ) {
       return;
     }
 
+    if (pendingTwoFactorResolveRef.current) {
+      pendingTwoFactorResolveRef.current({
+        type: auth.selectedTwoFactor,
+        code: twoFactorCode.trim(),
+      });
+      setTwoFactorCode('');
+      return;
+    }
+
+    if (submitting) {
+      return;
+    }
+
     setSubmitting(true);
+    tsinghuaAuthService.setTwoFactorHandler(async prompt => {
+      dispatch(
+        setTwoFactor({
+          approaches: prompt.approaches,
+          studentId: credentials.studentId,
+          hint: prompt.reason,
+        }),
+      );
+      if (prompt.approaches[0]) {
+        dispatch(setSelectedTwoFactor(prompt.approaches[0].type));
+      }
+      setTwoFactorCode('');
+      toast(prompt.reason);
+
+      return new Promise(resolve => {
+        pendingTwoFactorResolveRef.current = value => {
+          pendingTwoFactorResolveRef.current = null;
+          resolve(value);
+        };
+      });
+    });
+
     try {
       const result = await tsinghuaAuthService.verifyTwoFactor(
         credentials,
@@ -178,12 +225,28 @@ export function LoginScreen() {
         await finishAuthenticated(credentials.studentId);
         return;
       }
+      if (result.status === 'two_factor') {
+        dispatch(
+          setTwoFactor({
+            approaches: result.twoFactorApproaches ?? [],
+            studentId: credentials.studentId,
+            hint: result.error,
+          }),
+        );
+        if (result.twoFactorApproaches?.[0]) {
+          dispatch(setSelectedTwoFactor(result.twoFactorApproaches[0].type));
+        }
+        setTwoFactorCode('');
+        return;
+      }
       dispatch(setAuthError(result.error ?? '二次认证失败'));
     } catch (error) {
       dispatch(
         setAuthError(error instanceof Error ? error.message : '二次认证失败'),
       );
     } finally {
+      tsinghuaAuthService.setTwoFactorHandler(null);
+      pendingTwoFactorResolveRef.current = null;
       setSubmitting(false);
     }
   };
@@ -211,16 +274,21 @@ export function LoginScreen() {
           contentContainerStyle={styles.centerStage}
           keyboardShouldPersistTaps="handled">
           <View style={styles.panel}>
-            <Image
-              source={require('../../assets/illustrations/campus.png')}
-              style={styles.hero}
-            />
+            <View style={styles.heroBox}>
+              <Image
+                source={require('../../assets/illustrations/campus.png')}
+                style={styles.hero}
+              />
+            </View>
             <Text style={styles.title}>{t.appName}</Text>
             <Text style={styles.subtitle}>{t.auth.subtitle}</Text>
 
             {isTwoFactor ? (
               <View style={styles.twoFactorBox}>
                 <Text style={styles.twoFactorTitle}>{t.auth.twoFactorTitle}</Text>
+                {auth.twoFactorHint ? (
+                  <Text style={styles.twoFactorHint}>{auth.twoFactorHint}</Text>
+                ) : null}
                 <View style={styles.methodRow}>
                   {auth.twoFactorApproaches.map((approach: TwoFactorApproach) => (
                     <Pressable
@@ -252,6 +320,7 @@ export function LoginScreen() {
                   value={twoFactorCode}
                   onChangeText={setTwoFactorCode}
                   placeholder={t.auth.twoFactorCode}
+                  placeholderTextColor={colors.textMuted}
                   keyboardType="number-pad"
                   autoCapitalize="none"
                 />
@@ -268,6 +337,7 @@ export function LoginScreen() {
                   value={studentId}
                   onChangeText={setStudentId}
                   placeholder={t.auth.studentId}
+                  placeholderTextColor={colors.textMuted}
                   keyboardType="number-pad"
                   autoCapitalize="none"
                 />
@@ -276,6 +346,7 @@ export function LoginScreen() {
                   value={password}
                   onChangeText={setPassword}
                   placeholder={t.auth.password}
+                  placeholderTextColor={colors.textMuted}
                   secureTextEntry
                   autoCapitalize="none"
                 />
@@ -301,6 +372,7 @@ export function LoginScreen() {
             {auth.error ? <Text style={styles.error}>{auth.error}</Text> : null}
 
             <Text style={styles.footerHint}>{t.auth.footerHint}</Text>
+            <Text style={styles.versionTag}>Campus OS v0.2.0</Text>
 
             {__DEV__ ? (
               <Pressable onPress={() => DevSettings.reload()} style={styles.devReload}>
@@ -332,16 +404,20 @@ const styles = StyleSheet.create({
   panel: {
     width: '100%',
     maxWidth: 360,
+    alignItems: 'stretch',
+  },
+  heroBox: {
     alignItems: 'center',
+    marginBottom: spacing.lg,
   },
   hero: {
-    width: 112,
-    height: 112,
+    width: 96,
+    height: 96,
     resizeMode: 'contain',
-    marginBottom: spacing.md,
+    opacity: 0.95,
   },
   title: {
-    ...typography.h1,
+    ...typography.display,
     color: colors.text,
     textAlign: 'center',
   },
@@ -350,8 +426,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     marginTop: spacing.xs,
-    marginBottom: spacing.lg,
-    lineHeight: 24,
+    marginBottom: spacing.xl,
   },
   form: {
     width: '100%',
@@ -367,22 +442,30 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: spacing.xs,
   },
+  twoFactorHint: {
+    ...typography.caption,
+    color: colors.warning,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
   methodRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.xs,
     justifyContent: 'center',
+    marginBottom: spacing.xs,
   },
   methodChip: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 999,
+    borderRadius: radii.pill,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.xs + 2,
+    backgroundColor: colors.surface,
   },
   methodChipActive: {
     borderColor: colors.primary,
-    backgroundColor: '#E3F2FD',
+    backgroundColor: colors.primaryMuted,
   },
   methodChipText: {
     ...typography.caption,
@@ -390,14 +473,15 @@ const styles = StyleSheet.create({
   },
   methodChipTextActive: {
     color: colors.primary,
+    fontWeight: '600',
   },
   input: {
     width: '100%',
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
+    borderRadius: radii.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md - 2,
     backgroundColor: colors.surface,
     color: colors.text,
     ...typography.body,
@@ -416,9 +500,16 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textMuted,
     textAlign: 'center',
-    marginTop: spacing.lg,
-    lineHeight: 20,
+    marginTop: spacing.xl,
     paddingHorizontal: spacing.sm,
+  },
+  versionTag: {
+    ...typography.micro,
+    color: colors.primary,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+    fontWeight: '600',
+    letterSpacing: 0.4,
   },
   devReload: {
     marginTop: spacing.md,

@@ -109,7 +109,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderRadius: radii.md,
   },
-  retryText: {...typography.label, color: '#fff'},
+  retryText: {...typography.label, color: colors.textInvert},
   content: {padding: spacing.lg, paddingBottom: spacing.xxl},
   section: {
     backgroundColor: colors.surface,

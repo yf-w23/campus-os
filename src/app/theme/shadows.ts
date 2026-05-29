@@ -1,47 +1,23 @@
-import {Platform, ViewStyle} from 'react-native';
-import {colors} from './colors';
+import {ViewStyle} from 'react-native';
 
 /**
- * 精细 elevation：参考 shadcn — 不堆叠粗阴影，用极淡 layer。
+ * 深色 UI 不靠阴影做层级，靠 surface 颜色差。
+ * 这里全部 noop，仅保留 key 兼容旧引用。
  */
 export const shadows: Record<'none' | 'soft' | 'medium' | 'card', ViewStyle> = {
   none: {},
-  soft: Platform.select({
-    ios: {
-      shadowColor: colors.shadowSoft,
-      shadowOffset: {width: 0, height: 1},
-      shadowOpacity: 1,
-      shadowRadius: 2,
-    },
-    android: {elevation: 1},
-    default: {},
-  })!,
-  medium: Platform.select({
-    ios: {
-      shadowColor: colors.shadowMedium,
-      shadowOffset: {width: 0, height: 4},
-      shadowOpacity: 1,
-      shadowRadius: 8,
-    },
-    android: {elevation: 3},
-    default: {},
-  })!,
-  card: Platform.select({
-    ios: {
-      shadowColor: colors.cardShadow,
-      shadowOffset: {width: 0, height: 6},
-      shadowOpacity: 1,
-      shadowRadius: 14,
-    },
-    android: {elevation: 2},
-    default: {},
-  })!,
+  soft: {},
+  medium: {},
+  card: {},
 };
 
+/**
+ * 大圆角 — large rounded corners，符合 ChatGPT / Copilot mobile / Linear 视觉。
+ */
 export const radii = {
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
+  sm: 10,
+  md: 14,
+  lg: 20,
+  xl: 28,
   pill: 999,
 } as const;

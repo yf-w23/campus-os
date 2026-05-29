@@ -47,12 +47,12 @@ const ALL_STATUSES: ClassroomStatus[] = [
 ];
 
 const STATUS_COLOR: Record<ClassroomStatus, string> = {
-  [ClassroomStatus.AVAILABLE]: '#10B981',
-  [ClassroomStatus.TEACHING]: '#3B82F6',
-  [ClassroomStatus.EXAM]: '#EF4444',
-  [ClassroomStatus.BORROWED]: '#F59E0B',
-  [ClassroomStatus.DISABLED]: '#94A3B8',
-  [ClassroomStatus.RESERVED_FOR_COMPAT]: '#94A3B8',
+  [ClassroomStatus.AVAILABLE]: colors.success,
+  [ClassroomStatus.TEACHING]: colors.primary,
+  [ClassroomStatus.EXAM]: colors.error,
+  [ClassroomStatus.BORROWED]: colors.warning,
+  [ClassroomStatus.DISABLED]: colors.textMuted,
+  [ClassroomStatus.RESERVED_FOR_COMPAT]: colors.textMuted,
 };
 
 const STATUS_LABEL: Record<ClassroomStatus, string> = {
@@ -184,6 +184,7 @@ export function ClassroomScreen({navigation}: Props) {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
+            style={styles.buildingScroll}
             contentContainerStyle={styles.buildingRow}>
             {buildings.map(b => {
               const active = selected?.searchName === b.searchName;
@@ -213,6 +214,7 @@ export function ClassroomScreen({navigation}: Props) {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
+              style={styles.weekScroll}
               contentContainerStyle={styles.weekRow}>
               {state.validWeekNumbers.map(w => {
                 const active = w === week;
@@ -397,39 +399,46 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderRadius: radii.md,
   },
-  retryText: {...typography.label, color: '#fff'},
+  retryText: {...typography.label, color: colors.textInvert},
 
+  buildingScroll: {flexGrow: 0, flexShrink: 0},
   buildingRow: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
+    alignItems: 'center',
     gap: spacing.xs,
   },
   buildingChip: {
+    height: 36,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
     backgroundColor: colors.surface,
-    borderRadius: radii.md,
+    borderRadius: radii.pill,
     borderWidth: 1,
     borderColor: colors.borderSubtle,
     marginRight: spacing.xs,
     minWidth: 88,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  buildingChipActive: {borderColor: colors.primary, backgroundColor: '#E3F2FD'},
+  buildingChipActive: {borderColor: colors.primary, backgroundColor: colors.primaryMuted},
   buildingText: {...typography.caption, color: colors.text},
   buildingTextActive: {color: colors.primary, fontWeight: '600'},
 
+  weekScroll: {flexGrow: 0, flexShrink: 0},
   weekRow: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
+    alignItems: 'center',
     gap: spacing.xs,
   },
   weekChip: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
+    height: 28,
+    paddingHorizontal: spacing.sm + 2,
     backgroundColor: colors.surfaceAlt,
     borderRadius: radii.sm,
     marginRight: spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   weekChipActive: {backgroundColor: colors.primaryMuted},
   weekText: {...typography.micro, color: colors.textSecondary},
@@ -440,16 +449,17 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
     backgroundColor: colors.surface,
     borderRadius: radii.md,
-    ...shadows.soft,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
     overflow: 'hidden',
     marginBottom: spacing.sm,
   },
-  dayCell: {flex: 1, paddingVertical: spacing.sm, alignItems: 'center'},
+  dayCell: {flex: 1, paddingVertical: spacing.sm + 2, alignItems: 'center'},
   dayCellActive: {backgroundColor: colors.primary},
   dayLabel: {...typography.caption, color: colors.text, fontWeight: '600'},
-  dayLabelActive: {color: '#fff'},
+  dayLabelActive: {color: colors.textInvert},
   dayDate: {...typography.micro, color: colors.textMuted, marginTop: 2},
-  dayDateActive: {color: 'rgba(255,255,255,0.85)'},
+  dayDateActive: {color: 'rgba(10, 10, 11, 0.7)'},
 
   summaryBar: {
     flexDirection: 'row',
@@ -502,8 +512,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     marginBottom: 8,
     gap: spacing.sm,
-    ...shadows.soft,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: colors.borderSubtle,
   },
   classroomNameWrap: {flex: 3},

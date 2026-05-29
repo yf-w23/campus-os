@@ -129,10 +129,10 @@ function SectionCard({
   const percentTaken = total > 0 ? taken / total : 0;
   const barColor =
     percentTaken < 0.7
-      ? '#10B981'
+      ? colors.success
       : percentTaken < 0.9
-      ? '#F59E0B'
-      : '#EF4444';
+      ? colors.warning
+      : colors.error;
   return (
     <Pressable
       style={({pressed}) => [
@@ -258,5 +258,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderRadius: radii.md,
   },
-  retryText: {...typography.label, color: '#fff'},
+  retryText: {...typography.label, color: colors.textInvert},
 });

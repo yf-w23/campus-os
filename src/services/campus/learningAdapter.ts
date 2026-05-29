@@ -104,20 +104,42 @@ async function postLearnAoData(path: string, courseId?: string): Promise<any> {
   });
 }
 
-// ====== 课表（通过 zhjw）======
+// ====== 课表（通过 zhjw 教务系统，webvpn 漫游）======
 function formatScheduleDate(date: Date): string {
   return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
 }
+
+// 与 thu-info-lib strings.ts JXRL_BKS_PREFIX 完全一致：本科生教学日历，走 webvpn /http/ 包装。
+// 该 zhjw token 已在 transport 的 GBK 列表里，中文不会乱码。
+const JXRL_BKS_WEBVPN_URL =
+  'https://webvpn.tsinghua.edu.cn/http/77726476706e69737468656265737421eaff4b8b69336153301c9aa596522b20bc86e6e559a9b290/jxmh_out.do';
+// thu-info getPrimary 用的 default 漫游 payload（注册教务子系统会话）
+const REGISTRAR_ROAM_PAYLOAD = '287C0C6D90ABB364CD5FDF1495199962';
 
 export async function fetchScheduleRange(
   startDate: string,
   endDate: string,
 ): Promise<ScheduleEvent[]> {
-  // 与 thu-learn-lib getCalendar 一致：先激活 zhjw 会话
-  await tsinghuaAuthService.activateRegistrar();
-  const url = `${ENDPOINTS.registrarCalendar}?m=bks_jxrl_all&p_start_date=${startDate}&p_end_date=${endDate}&jsoncallback=m`;
-  const raw = await webvpnTransport.fetchText(url);
-  return mapScheduleRows(parseJsonpSchedule(raw));
+  const url = `${JXRL_BKS_WEBVPN_URL}?m=bks_jxrl_all&p_start_date=${startDate}&p_end_date=${endDate}&jsoncallback=m`;
+  // 与 thu-info-lib getPrimary 同构：roamingWrapper(policy="default", payload)。
+  // 先直接取（登录已建立 webvpn 会话）；失败再 roamDefault 注册 zhjw 子系统，
+  // 仍失败则 withSessionRecovery 第二层完整重登。
+  return tsinghuaAuthService.withSessionRecovery(
+    async () => {
+      const raw = await webvpnTransport.fetchText(url);
+      const rows = parseJsonpSchedule(raw);
+      // 合法响应是 `m([...])`；取不到数组多半是漫游未建立 / 落回登录页 → 抛错触发恢复
+      if (rows.length === 0 && raw.indexOf('[') < 0) {
+        throw new Error(`schedule: invalid JSONP (head=${raw.slice(0, 60)})`);
+      }
+      return mapScheduleRows(rows);
+    },
+    () =>
+      webvpnTransport
+        .roamDefault(REGISTRAR_ROAM_PAYLOAD)
+        .then(() => undefined),
+    'schedule',
+  );
 }
 
 // ====== 课程列表 ======
@@ -286,18 +308,20 @@ export async function fetchCourseFiles(courses: CourseInfo[]): Promise<CourseFil
 }
 
 // ====== 聚合 ======
-export async function fetchLearningCoreSnapshot(): Promise<LearningSnapshot> {
+async function fetchLearningCoreSnapshotInner(): Promise<LearningSnapshot> {
   // 1) 拉课程
   const courses = await fetchCourses();
 
-  // 2) 拉课表（zhjw 漫游）
+  // 2) 拉课表（zhjw 漫游）—— 往前回看 1 天，往后 28 天，确保今日一定在窗口内
   let schedule: ScheduleEvent[] = [];
   try {
     const today = new Date();
+    const start = new Date(today);
+    start.setDate(start.getDate() - 1);
     const end = new Date(today);
-    end.setDate(end.getDate() + 21);
+    end.setDate(end.getDate() + 28);
     schedule = await fetchScheduleRange(
-      formatScheduleDate(today),
+      formatScheduleDate(start),
       formatScheduleDate(end),
     );
   } catch {
@@ -318,6 +342,17 @@ export async function fetchLearningCoreSnapshot(): Promise<LearningSnapshot> {
     files: [],
     fetchedAt: new Date().toISOString(),
   };
+}
+
+export async function fetchLearningCoreSnapshot(): Promise<LearningSnapshot> {
+  // 经会话恢复包裹：冷启动恢复登录后内存 csrf 为空 / cookie 失效时，
+  // 第一次 fetchCourses 抛错会触发 withSessionRecovery 用 Keychain 凭证静默重登，
+  // 重新建立 learn 会话 + csrf 后重试整条链路。与 thu-info verifyAndReLogin 对齐。
+  return tsinghuaAuthService.withSessionRecovery(
+    () => fetchLearningCoreSnapshotInner(),
+    undefined,
+    'learning-core',
+  );
 }
 
 export async function fetchLearningExtras(

@@ -1,12 +1,32 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {AIProviderConfig} from '../domain/agent';
+import type {ColorScheme} from '../app/theme';
 
 const KEYS = {
   locale: '@campusos/locale',
   aiProvider: '@campusos/ai_provider',
   demoMode: '@campusos/demo_mode',
   trustDevice: '@campusos/trust_device',
+  colorScheme: '@campusos/color_scheme',
+  sessionStudentId: '@campusos/session_student_id',
 } as const;
+
+/**
+ * 持久化登录态（与 THU Info 一致的「记住登录」）。
+ * 仅存学号作为「上次登录过」的标记；真正的密码 / fingerprint 在 Keychain。
+ * 启动时若该值存在且 Keychain 有凭证，则乐观进入主界面并后台静默续期。
+ */
+export async function getSessionStudentId(): Promise<string | null> {
+  return AsyncStorage.getItem(KEYS.sessionStudentId);
+}
+
+export async function setSessionStudentId(studentId: string): Promise<void> {
+  await AsyncStorage.setItem(KEYS.sessionStudentId, studentId);
+}
+
+export async function clearSessionStudentId(): Promise<void> {
+  await AsyncStorage.removeItem(KEYS.sessionStudentId);
+}
 
 export async function getLocale(): Promise<'zh' | 'en'> {
   const value = await AsyncStorage.getItem(KEYS.locale);
@@ -44,4 +64,13 @@ export async function getTrustDevice(): Promise<boolean> {
 
 export async function setTrustDevice(enabled: boolean): Promise<void> {
   await AsyncStorage.setItem(KEYS.trustDevice, enabled ? 'true' : 'false');
+}
+
+export async function getColorScheme(): Promise<ColorScheme> {
+  const value = await AsyncStorage.getItem(KEYS.colorScheme);
+  return value === 'light' ? 'light' : 'dark';
+}
+
+export async function setColorScheme(scheme: ColorScheme): Promise<void> {
+  await AsyncStorage.setItem(KEYS.colorScheme, scheme);
 }

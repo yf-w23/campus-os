@@ -1,4 +1,5 @@
 import React from 'react';
+import {Platform, StyleSheet} from 'react-native';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {NavigationContainer} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
@@ -28,14 +29,28 @@ import {TabIcon} from '../../features/common/components/Buttons';
 import {useSelector} from 'react-redux';
 import {selectAuth} from '../../state/selectors';
 import {colors} from '../theme';
-import {RootStackParamList} from './types';
+import {RootStackParamList, RootTabParamList} from './types';
 
-export type RootTabParamList = {
-  Home: undefined;
-  Learning: undefined;
-  Campus: undefined;
-  AI: undefined;
-  Settings: undefined;
+/**
+ * 全局 Navigation 暗色主题 — 关掉 RN-Nav 默认白色 surface，
+ * 进入/退出 Stack 不会闪一下白。
+ */
+const navTheme = {
+  dark: true,
+  colors: {
+    primary: colors.primary,
+    background: colors.background,
+    card: colors.background,
+    text: colors.text,
+    border: 'transparent',
+    notification: colors.primary,
+  },
+  fonts: {
+    regular: {fontFamily: 'System', fontWeight: '400' as const},
+    medium: {fontFamily: 'System', fontWeight: '500' as const},
+    bold: {fontFamily: 'System', fontWeight: '700' as const},
+    heavy: {fontFamily: 'System', fontWeight: '800' as const},
+  },
 };
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
@@ -50,12 +65,25 @@ function MainTabs() {
         headerShown: false,
         tabBarStyle: {
           backgroundColor: colors.surface,
-          borderTopColor: colors.border,
-          height: 72,
-          paddingBottom: 10,
-          paddingTop: 8,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: colors.borderSubtle,
+          elevation: 0,
+          height: 78,
+          paddingBottom: 14,
+          paddingTop: 10,
+          ...Platform.select({
+            ios: {
+              shadowColor: colors.shadowSoft,
+              shadowOffset: {width: 0, height: -4},
+              shadowOpacity: 1,
+              shadowRadius: 12,
+            },
+            android: {},
+          }),
         },
         tabBarShowLabel: false,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMuted,
       }}>
       <Tab.Screen
         name="Home"
@@ -131,8 +159,13 @@ export function AppNavigator() {
   const isLoggedIn = auth.session.isAuthenticated || auth.demoMode;
 
   return (
-    <NavigationContainer>
-      <Stack.Navigator screenOptions={{headerShown: false}}>
+    <NavigationContainer theme={navTheme}>
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+          contentStyle: {backgroundColor: colors.background},
+          animation: 'slide_from_right',
+        }}>
         {isLoggedIn ? (
           <>
             <Stack.Screen name="Main" component={MainTabs} />

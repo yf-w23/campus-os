@@ -256,16 +256,16 @@ function FloorCard({
   const percentTaken = total > 0 ? taken / total : 0;
   const barColor =
     percentTaken < 0.7
-      ? '#10B981'
+      ? colors.success
       : percentTaken < 0.9
-      ? '#F59E0B'
-      : '#EF4444';
+      ? colors.warning
+      : colors.error;
 
   return (
     <Pressable
       style={({pressed}) => [
         styles.sectionCard,
-        pressed && {opacity: 0.85, transform: [{scale: 0.995}]},
+        pressed && {opacity: 0.75},
       ]}
       onPress={onPress}
       disabled={!floor.valid}>
@@ -377,7 +377,7 @@ function RoomsView() {
             const free = Math.max(0, k.totalCount - k.resvCount);
             const ratio = k.totalCount > 0 ? k.resvCount / k.totalCount : 0;
             const barColor =
-              ratio < 0.7 ? '#10B981' : ratio < 0.9 ? '#F59E0B' : '#EF4444';
+              ratio < 0.7 ? colors.success : ratio < 0.9 ? colors.warning : colors.error;
             return (
               <View key={k.id} style={styles.sectionCard}>
                 <View style={styles.sectionTop}>
@@ -504,7 +504,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 6,
   },
-  libChipActive: {borderColor: colors.primary, backgroundColor: '#E3F2FD'},
+  libChipActive: {borderColor: colors.primary, backgroundColor: colors.primaryMuted},
   libChipDisabled: {opacity: 0.5},
   libChipText: {...typography.caption, color: colors.text},
   libChipTextActive: {color: colors.primary, fontWeight: '600'},
@@ -594,7 +594,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderRadius: radii.md,
   },
-  retryText: {...typography.label, color: '#fff'},
+  retryText: {...typography.label, color: colors.textInvert},
   footer: {
     ...typography.caption,
     color: colors.textMuted,

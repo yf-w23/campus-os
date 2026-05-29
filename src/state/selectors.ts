@@ -3,6 +3,20 @@ import {RootState} from './store';
 export const selectAuth = (state: RootState) => state.auth;
 export const selectLearning = (state: RootState) => state.learning;
 export const selectAI = (state: RootState) => state.ai;
+
+export const selectConversations = (state: RootState) =>
+  state.ai.conversations;
+
+export const selectActiveConversationId = (state: RootState) =>
+  state.ai.activeConversationId;
+
+export const selectActiveConversation = (state: RootState) =>
+  state.ai.conversations.find(c => c.id === state.ai.activeConversationId) ??
+  null;
+
+export const selectActiveMessages = (state: RootState) =>
+  state.ai.conversations.find(c => c.id === state.ai.activeConversationId)
+    ?.messages ?? [];
 export const selectSettings = (state: RootState) => state.settings;
 
 export const selectUpcomingHomework = (state: RootState) =>

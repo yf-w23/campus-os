@@ -7,6 +7,7 @@ interface AuthSliceState {
   session: CampusSession;
   error?: string;
   twoFactorApproaches: TwoFactorApproach[];
+  twoFactorHint?: string;
   selectedTwoFactor?: TwoFactorApproach['type'];
   demoMode: boolean;
 }
@@ -34,10 +35,16 @@ const authSlice = createSlice({
     },
     setTwoFactor(
       state,
-      action: PayloadAction<{approaches: TwoFactorApproach[]; studentId: string}>,
+      action: PayloadAction<{
+        approaches: TwoFactorApproach[];
+        studentId: string;
+        hint?: string;
+      }>,
     ) {
       state.status = 'two_factor';
+      state.error = undefined;
       state.twoFactorApproaches = action.payload.approaches;
+      state.twoFactorHint = action.payload.hint;
       state.session = {
         isAuthenticated: false,
         webvpnReady: false,
@@ -71,6 +78,7 @@ const authSlice = createSlice({
       state.session = {isAuthenticated: false, webvpnReady: false};
       state.demoMode = false;
       state.twoFactorApproaches = [];
+      state.twoFactorHint = undefined;
       state.selectedTwoFactor = undefined;
       state.error = undefined;
     },

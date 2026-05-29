@@ -5,7 +5,9 @@
     "paths": {
       "@/*": ["src/*"]
     },
-    "strict": true
+    "strict": true,
+    "module": "esnext",
+    "moduleResolution": "bundler"
   },
   "include": ["src", "App.tsx", "__tests__"]
 }

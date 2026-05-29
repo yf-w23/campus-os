@@ -28,11 +28,22 @@ export function wrapAsDocument(
   body: string,
   options: {dark?: boolean; baseFontSize?: number} = {},
 ): string {
-  const dark = options.dark ?? false;
+  // 默认跟随 app 当前 scheme —— colors 在 App 启动时已 applyScheme。
+  // 通过 background hex 区分（避免 utils 反向 import theme 制造循环依赖）
+  const inferDark = (() => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const {colors} = require('../app/theme');
+      return colors.background !== '#FAFAFB';
+    } catch {
+      return true;
+    }
+  })();
+  const dark = options.dark ?? inferDark;
   const fontSize = options.baseFontSize ?? 15;
-  const bg = dark ? '#0F172A' : '#FFFFFF';
-  const fg = dark ? '#E2E8F0' : '#1A1A2E';
-  const link = dark ? '#60A5FA' : '#1E88E5';
+  const bg = dark ? '#141417' : '#FFFFFF';
+  const fg = dark ? '#F5F5F7' : '#1A1A2E';
+  const link = dark ? '#A78BFA' : '#7C5CFA';
 
   return `<!DOCTYPE html>
 <html lang="zh-cmn-Hans">
@@ -65,11 +76,11 @@ export function wrapAsDocument(
     margin: 12px 0;
   }
   table, th, td {
-    border: 1px solid ${dark ? '#334155' : '#E2E8F0'};
+    border: 1px solid ${dark ? '#26262B' : '#E2E8F0'};
   }
   th, td { padding: 6px 10px; }
   pre, code {
-    background: ${dark ? '#1E293B' : '#F1F5F9'};
+    background: ${dark ? '#1C1C20' : '#F1F5F9'};
     padding: 2px 6px;
     border-radius: 4px;
     font-family: ui-monospace, "SF Mono", Menlo, monospace;

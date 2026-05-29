@@ -1,3 +1,11 @@
+export type RootTabParamList = {
+  Home: undefined;
+  Learning: undefined;
+  Campus: undefined;
+  AI: {initialQuestion?: string} | undefined;
+  Settings: undefined;
+};
+
 export type RootStackParamList = {
   Login: undefined;
   Main: undefined;

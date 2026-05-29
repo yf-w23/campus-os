@@ -84,8 +84,12 @@ function inferResponseCharset(url: string, contentType: string): string {
       return 'utf-8';
     }
   }
-  // 2) URL 命中 GBK 子系统
+  // 2) URL 命中 GBK 子系统（webvpn token 或直连 zhjw 教务系统）
   if (GBK_WEBVPN_TOKENS.some(t => url.includes(t))) {
+    return 'gbk';
+  }
+  // 直连教务系统 zhjw.cic.tsinghua.edu.cn（课表 jxmh_out.do 等）默认 GBK
+  if (url.includes('zhjw.cic.tsinghua.edu.cn')) {
     return 'gbk';
   }
   return 'utf-8';
