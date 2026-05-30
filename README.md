@@ -6,7 +6,9 @@
 [![License](https://img.shields.io/badge/license-MIT-blue)](#许可)
 [![Platform](https://img.shields.io/badge/platform-Android%207%2B-success)](#安装)
 
-把成绩、教室、电费、座位预约、AI 助手揉到一个 app 里。完全 native UI，不依赖任何业务后端 —— 你的账号密码和 API Key 只存在你手机的安全存储里。
+把课表、作业、成绩、教室、电费、图书馆座位和 AI 助手揉到一个 App 里。完全 native UI，不依赖任何业务后端 —— 你的账号密码和 API Key 只存在你手机的安全存储里。
+
+**当前版本：v0.3.0** · [下载 APK](https://github.com/yf-w23/campus-os/releases/latest)
 
 ---
 
@@ -20,7 +22,7 @@
 
 - 系统要求：Android 7+（API 24+）
 - 架构：arm64-v8a（2018 年后绝大多数手机都是；32 位 / x86 模拟器暂不支持）
-- 首次安装可能需要在"设置 → 安全"里允许"未知来源"
+- 首次安装可能需要在「设置 → 安全」里允许「未知来源」
 
 ### 方式二：从源码构建
 
@@ -29,7 +31,8 @@ git clone https://github.com/yf-w23/campus-os.git
 cd campus-os
 npm install               # 拉 RN / Redux / cheerio / iconv-lite 等依赖（约 800 MB）
 
-# Android
+# Android（Windows 建议把 Gradle 缓存放到用户目录，避免路径过长）
+# PowerShell: $env:GRADLE_USER_HOME = "$env:USERPROFILE\.gradle"
 echo "sdk.dir=C:\\Users\\<你>\\AppData\\Local\\Android\\Sdk" > android/local.properties
 cd android && ./gradlew assembleRelease
 adb install -r app/build/outputs/apk/release/app-release.apk
@@ -47,18 +50,31 @@ npm run android           # 另开终端编译 debug 包
 
 打开应用 → 输入清华学号 + 密码 → 验证短信 / 微信 / TOTP 二次认证 → 进入主界面。
 
-**不想登真实账号？** 登录页右下角"演示模式"可以看全部 UI（数据是 mock 的）。
+**不想登真实账号？** 登录页右下角「演示模式」可以看全部 UI（数据是 mock 的）。
+
+**首次使用建议：** 在首页点「同步校园数据」，拉取课表、课程与作业后再看「日程」或问 AI。
 
 ---
 
 ## 功能一览
 
+底部六个 Tab：**首页 · 学习 · 日程 · 校园 · AI · 设置**
+
 ### 首页 `home`
 
-- 今日课表（按时间排序，本地时区，从近一个月日历中筛出今天）
+- **今日课表**：与「日程」同源数据，按当天日期筛选、按上课时间排序
 - 待办作业（按截止日排序）
 - 未读通知统计
-- 一键重新同步
+- 一键重新同步校园数据
+
+### 日程 `schedule`（v0.3.0 新增）
+
+- **周视图**：自然周切换（周一–周日），有课日期带圆点提示
+- **课表数据**：与首页「今日课表」相同，来自 `learning.snapshot.schedule`（教务 JSONP `bks_jxrl_all`）
+- 周六/周日无课时，打开会自动选中本周内最近有课的一天（如周五）
+- **个人备忘**：本地添加/长按删除；与教务课表合并展示
+- **课表缓存**：成功同步后写入本地；同步失败时保留上次课表，避免「昨天有课今天全空」
+- 右上角「同步」= 与首页相同的 `syncCampusData`；也可「问 AI」跳转助手
 
 ### 学习 `learning`
 
@@ -68,7 +84,7 @@ npm run android           # 另开终端编译 debug 包
 - 课件浏览 + in-app PDF / DOCX 预览
 - 作业列表（未交 / 待批 / 已批，含截止时间、补交时间、成绩）
 - 通知列表（含 Base64 内容自动解码）
-- 课表（教务系统 `zhjw.cic` 教学日历 `bks_jxrl_all`，经 WebVPN 漫游拉 JSONP、GBK 解码）
+- 课表拉取：经 WebVPN 漫游教务 `zhjw.cic` 教学日历 JSONP，解析后写入 Redux（供首页 / 日程 / AI 共用）
 
 ### 校园 `campus` — **全部 native**
 
@@ -77,19 +93,21 @@ npm run android           # 另开终端编译 debug 包
 | 成绩查询 | `services/campus/grades.ts` | 本科生 / 研究生切换；学分绩**自动排除 P/F 等通过制课程**；按学期分组 |
 | 教室查询 | `services/campus/classroom.ts` | 按教学楼 → 周次 → 周一–周日选日查节次占用；5 色图例：空闲 / 上课 / 考试 / 借用 / 停用 |
 | 体测成绩 | `services/campus/petest.ts` | JSON 解析体测各项分数 + 自动算参考成绩 |
-| 宿舍 | `services/campus/campusEndpoints.ts` | 电费余额（只读）+ 电费充值（WebView）+ 健康打卡 |
-| 图书馆座位 | `services/campus/library.ts` | 4 层导航：馆 → 楼层（聚合可用数）→ 分区（具体使用率）→ 座位（一键预约）|
-| 研讨间预约 | `services/campus/library.ts` | 浏览研讨间类型 + 全部资源 |
+| 宿舍 | `services/campus/electricity.ts` 等 | 电费余额（只读）+ 电费充值（需确认）+ 健康打卡 |
+| 图书馆座位 | `services/campus/library.ts` | 4 层导航：馆 → 楼层 → 分区 → 座位（可预约，需确认）|
+| 研读间预约 | `services/campus/library.ts` | 浏览研讨间类型 + 全部资源 |
 
-### AI `ai` — **类 ChatGPT 多会话**
+> 体育场馆预约相关代码在仓库中保留，当前校园入口未开放。
 
-- 兼容 OpenAI 协议（DeepSeek / 智谱 / Kimi / Doubao 等都能直接配）
-- **多会话管理**：会话列表首页（标题自动命名、最近预览、相对时间）、开启新对话、进入历史对话继续聊、删除会话
-- **历史持久化**：对话存本地（AsyncStorage），杀进程重启后自动恢复上次对话
-- **上下文记忆**：同一会话内带完整往返历史发送；系统提示注入真实当前日期，避免模型臆测"今天"
-- 只读 Agent：可以问"我今天有什么作业 / 课"、"下周哪些 DDL"，但不会替你提交作业
-- 内置上下文：把你的今日课表 / 近期课表 / 待办 / 课程列表拼成 prompt
-- Markdown 渲染带错误边界兜底；RN 不支持流式 body 时自动回退为整体读取，保证有 Key 时稳定出结果
+### AI `ai` — **Agent + 多会话**
+
+- 兼容 OpenAI 协议（DeepSeek / 智谱 / Kimi / Doubao 等）
+- **多会话**：列表、新建、继续历史、删除；对话与偏好存 AsyncStorage
+- **工具调用（Function Calling）**：
+  - **只读**：今日概览、作业列表/详情、成绩、电费、图书馆空位、**按周课表**（`get_week_schedule`）、个人备忘列表等
+  - **需二次确认**：预约图书馆座位、电费充值、**添加/删除个人备忘**
+- 系统提示注入真实当前日期；课表工具按 `YYYY-MM-DD` 与首页逻辑一致筛选
+- Markdown 渲染；无流式时整体读取，保证有 Key 时稳定出结果
 
 ### 设置 `settings`
 
@@ -97,6 +115,17 @@ npm run android           # 另开终端编译 debug 包
 - 切换中文 / English、深色 / 浅色外观
 - 演示模式开关
 - 退出登录（清掉 Keychain + Redux + 持久化会话标记）
+
+---
+
+## v0.3.0 更新摘要
+
+| 项目 | 说明 |
+|---|---|
+| 日程 Tab | 周视图 + 备忘 + 与首页同源课表 |
+| 课表同步 | legacy JSONP 优先；失败保留缓存与内存中的课表 |
+| AI | `get_week_schedule`、`add/remove_personal_event` 等工具 |
+| Release | [v0.3.0](https://github.com/yf-w23/campus-os/releases/tag/v0.3.0) 附 arm64 APK |
 
 ---
 
@@ -108,24 +137,36 @@ npm run android           # 另开终端编译 debug 包
 src/
 ├── app/                  # Provider、Navigation、主题、i18n
 │   ├── i18n/             # 中英双语
-│   ├── navigation/       # React Navigation 路由
+│   ├── navigation/       # React Navigation（含 Schedule Tab）
 │   └── theme/            # 颜色 / 字体 / 间距 / 阴影
 ├── features/             # UI 层（按业务领域分）
 │   ├── auth/             # 登录 + 2FA
 │   ├── home/             # 首页
 │   ├── learning/         # 学习模块
-│   ├── campus/           # 校园模块（成绩 / 教室 / 体测 / 宿舍 / 图书馆 / 研讨间）
+│   ├── schedule/         # 日程（周网格 + 日列表 + 备忘）
+│   ├── campus/           # 校园模块
 │   ├── ai/               # AI Agent
 │   └── settings/         # 设置
 ├── services/             # 数据层
 │   ├── auth/             # SM2 + 清华统一身份认证
 │   ├── webvpn/           # WebVPN transport + 编码处理
-│   ├── campus/           # 校园各子系统 adapter（HTML / JSON 解析）
-│   └── ai/               # AI provider adapter
-├── domain/               # 领域模型 (TypeScript types)
-├── state/                # Redux Toolkit slices + selectors
-├── storage/              # Keychain（凭证）+ AsyncStorage（偏好 / 登录态 / AI 会话历史）
-└── utils/                # 编码 / HTML 工具
+│   ├── campus/           # 校园 adapter + scheduleService（JSONP 课表）
+│   ├── schedule/         # 个人备忘 CRUD（Redux 联动）
+│   └── ai/               # Agent + tools 注册表
+├── domain/               # 领域模型
+├── state/                # Redux Toolkit（learning / schedule / …）
+├── storage/              # Keychain + AsyncStorage（会话 / AI / 课表缓存 / 备忘）
+└── utils/                # weekDates、编码、HTML 工具
+```
+
+### 课表数据流
+
+```
+fetchScheduleRangeLegacy()     # 教务 JSONP，经 roamDefault + withSessionRecovery
+        ↓
+learning.snapshot.schedule     # 首页今日课表、AI get_week_schedule、日程 Tab 共用
+        ↓
+saveLearningScheduleCache()    # AsyncStorage 持久化，启动时 hydrate
 ```
 
 ### 认证流程（核心）
@@ -134,61 +175,41 @@ src/
 
 ```
 clearCookies
-→ GET WEB_VPN_OAUTH_LOGIN_URL × 2      // webvpn → oauth → id 重定向链
+→ GET WEB_VPN_OAUTH_LOGIN_URL × 2
 → 提取 sm2publicKey
-→ POST id_login_check                  // SM2 加密密码
+→ POST id_login_check                  # SM2 加密密码
 → 2FA (按需)
-→ XHR follow callback                  // 写入 wengine_vpn_ticket
-→ roam("id", "10000ea0...")            // 建立 info.tsinghua 后端会话
-→ activateLearn                        // 拿 _csrf token
+→ XHR follow callback
+→ roam("id", "10000ea0...")            # 建立 info.tsinghua 后端会话
+→ activateLearn                        # 拿 _csrf token
 ```
 
 ### 会话自动恢复
 
-清华 WebVPN session 约 30 分钟过期。`tsinghuaAuthService.withSessionRecovery()` 提供两层兜底（对应上游 `roamingWrapper` + `verifyAndReLogin`）：
-
-```
-operation() 第一次失败
-  ↓ Layer 1: roamIdPolicy(INFO_PORTAL_YYFWID)  → 重试
-    ↓ 还失败 ↓ Layer 2: ensureFullReLogin() (从 Keychain 拿密码完整重登)  → 重试
-      ↓ 还失败 → 抛 originalError
-```
-
-App 重启后内存里凭证清空 —— `hydrateCredentials()` 在第一次需要时从 Keychain 懒加载。同一时刻只允许一个并发 login Promise（避免多操作同时挤兑）。
-
-### 持久化登录（对齐 THU Info）
-
-- 登录成功记会话标记（学号）到 AsyncStorage，密码 / 设备指纹存 Keychain
-- 复用上次的设备指纹（不每次新建），信任设备得以累积、尽量跳过 2FA
-- 启动时若有会话标记且 Keychain 有凭证 → **乐观进入主界面**，首屏同步经 `withSessionRecovery` 用保存的凭证静默续期；Cookie 过期通常无感
-- 只有"退出登录"才清凭证 + 会话标记
+`tsinghuaAuthService.withSessionRecovery()` 两层兜底：子系统 roam → 完整重登（Keychain 凭证）。启动时若有会话标记则乐观进主界面并后台 `syncCampusData`。
 
 ### 字符编码（GBK 子系统）
 
-教务系统 / 电费 / 选课等老 ASP/Java 后端返回 **GBK** 编码，URL 里建筑名也要 GBK percent-encode：
-
-- `transport.ts:fetchText` 按响应头 charset / URL token 自动选 GBK 解码，走 `FileReader.readAsText(blob, charset)` 利用 RN-Android 的 Java `new String(bytes, charset)`
-- `utils/encoding.ts:gb2312PercentEncode` 用 `iconv-lite` 把中文转 GBK 字节流再 `%XX` —— 与上游 `arbitraryEncode(_, "gb2312")` 一致
-- `polyfills.ts` 给 RN 提供 `Buffer` / `process` polyfill（iconv-lite 依赖）
+教务 / 电费 / 选课等返回 **GBK**；`transport.ts` 按 charset 解码，`utils/encoding.ts` 做 GBK percent-encode。
 
 ---
 
 ## 设计约束
 
-1. **无业务后端** —— 凭证、API Key、所有用户数据**永不上行**任何业务服务器；只与清华官方域名 + 你配置的 AI Provider 通讯
-2. **WebVPN 强制** —— 所有校内 API 请求强制走 `webvpn.tsinghua.edu.cn` 转发，与官方 thu-info-app 完全一致；不会暴露你的 IP 给校内子系统
-3. **解析层隔离** —— HTML / JSON 解析全部隔离在 `services/campus/*Adapter.ts`，UI 层不接触原始响应
-4. **AI 只读** —— Agent 工具集**不包含任何写操作**（不会替你交作业、选课、约座位）
+1. **无业务后端** —— 凭证、API Key、课表与对话**永不上行**自建服务器；只与清华官方域名 + 你配置的 AI Provider 通讯
+2. **WebVPN 强制** —— 校内 API 经 `webvpn.tsinghua.edu.cn` 转发
+3. **解析层隔离** —— 原始 HTML/JSON 只在 `services/campus/*` 解析
+4. **AI 写操作需确认** —— 预约座位、充值、增删备忘等会弹窗确认；不会静默改教务数据
 
 ---
 
 ## 已知限制
 
-- 仅支持 Android arm64-v8a；iOS 工程在仓库里但未在真机验证过
-- 图书馆座位**预约**已实现；研讨间预约只读（下单仍走小程序）
-- AI Agent 只能读你的课表 / 作业 / 通知；不能直接调 WebVPN 接口（设计如此）
+- 仅支持 Android arm64-v8a；iOS 工程在仓库里但未在真机验证
+- 日程周网格依赖已同步的扁平课表；学期制 thu-info 分段课表为增强项，失败时仍可用 legacy 课表
+- 图书馆**座位**预约已实现；研讨间只读；体育场馆入口暂未开放
+- 设备指纹信任过期时可能需重新 2FA
 - 课程评估、培养方案、选课等 thu-info-app 有的功能暂未做
-- 设备指纹信任过期（罕见，约几个月一次）时 Layer 2 自动重登录会触发 2FA，此时需要手动重登录
 
 ---
 
@@ -196,27 +217,29 @@ App 重启后内存里凭证清空 —— `hydrateCredentials()` 在第一次需
 
 ```bash
 npm install
-npm test              # 跑 Jest 单测（仅 __tests__/ 下）
+npm test              # Jest（__tests__/）
 npx tsc --noEmit      # 类型检查
-npm run android       # debug 构建到连接的设备
+npm run android       # debug 到已连接设备
 ```
 
-发版：
+发版（Release APK）：
 
 ```bash
-cd android && ./gradlew assembleRelease
-# APK 在 android/app/build/outputs/apk/release/app-release.apk
+# Windows PowerShell 示例
+$env:GRADLE_USER_HOME = "$env:USERPROFILE\.gradle"
+cd android
+.\gradlew assembleRelease
+# 产物: android/app/build/outputs/apk/release/app-release.apk
+# 建议复制为 campus-os-v0.3.0-android-arm64.apk 再上传到 GitHub Release
 ```
 
 ---
 
 ## 上游参考
 
-接口行为严格对照：
-
-- [thu-info-app](https://github.com/thu-info-community/thu-info-app) —— 校园子系统接口、`roamingWrapper` 兜底模式、SM2 SSO 流程
-- [thu-learn-lib](https://github.com/Harry-Chen/thu-learn-lib) —— 网络学堂 API
-- [learnX](https://github.com/robertying/learnX) —— WebView Cookie 同步、in-app PDF 预览
+- [thu-info-app](https://github.com/thu-info-community/thu-info-app) — 校园子系统、roaming、SM2 SSO
+- [thu-learn-lib](https://github.com/Harry-Chen/thu-learn-lib) — 网络学堂 API
+- [learnX](https://github.com/robertying/learnX) — WebView Cookie、in-app 预览
 
 源码复用记录见 [`docs/SOURCE-REUSE-LOG.md`](docs/SOURCE-REUSE-LOG.md)。
 
