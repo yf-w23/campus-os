@@ -16,7 +16,7 @@
 
 [**Releases → 最新版本**](https://github.com/yf-w23/campus-os/releases/latest)
 
-下载 `campus-os-v0.2.0-android-arm64.apk`（约 60 MB），传到 Android 手机安装即可。
+下载 `campus-os-v0.3.0-android-arm64.apk`（约 65 MB），传到 Android 手机安装即可。
 
 - 系统要求：Android 7+（API 24+）
 - 架构：arm64-v8a（2018 年后绝大多数手机都是；32 位 / x86 模拟器暂不支持）

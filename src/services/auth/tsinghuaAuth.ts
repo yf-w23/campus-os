@@ -15,7 +15,6 @@ import {
   LEARN_LOGIN_YYFWID,
   OAUTH_LBREDIRECT_PREFIX,
   WEBVPN_OAUTH_LOGIN_URL,
-  WEBVPN_ROOT_URL,
 } from '../webvpn/constants';
 
 export interface LoginResult {
@@ -761,20 +760,63 @@ export class TsinghuaAuthService {
    *   extract payload → roam("cab", payload)
    */
   async cabLogin(credentials: CampusCredentials): Promise<void> {
-    const rawAddress = (
+    const raw = (
       await webvpnTransport.fetchText(ENDPOINTS.libRoomBookingQueryAuthAddress)
     ).trim();
-    const wrapped = rawAddress.replace(
-      'https://cab.lib.tsinghua.edu.cn',
-      ENDPOINTS.libRoomBookingRoot,
-    );
-    // 跟随 wrapped 拿到最终的 .../login/form/<payload> URL
-    const finalUrl = await webvpnTransport.syncCookiesViaXhr(wrapped, 15000);
-    const m = /\/login\/form\/(.+)$/.exec(finalUrl || wrapped);
-    if (!m || !m[1]) {
-      throw new Error(`cabLogin: no payload in finalUrl (${finalUrl})`);
+    // 与 thu-info-lib cabFetch 一致：接口返回 {"code":0,"data":"https://cab.lib..."}
+    let authAddress = raw;
+    try {
+      const parsed = JSON.parse(raw) as {code?: number; data?: string; message?: string};
+      if (parsed.code !== undefined && parsed.code !== 0) {
+        throw new Error(parsed.message ?? '获取研读间认证地址失败');
+      }
+      if (typeof parsed.data === 'string' && parsed.data) {
+        authAddress = parsed.data.trim();
+      }
+    } catch (e) {
+      if (e instanceof SyntaxError) {
+        // 少数环境直接返回纯 URL 文本
+        authAddress = raw;
+      } else {
+        throw e;
+      }
     }
-    await this.roamIdPolicy(credentials, m[1]);
+    const wrapped = authAddress.includes('webvpn.tsinghua.edu.cn')
+      ? authAddress
+      : authAddress.replace(
+          'https://cab.lib.tsinghua.edu.cn',
+          ENDPOINTS.libRoomBookingRoot,
+        );
+    // 与 thu-info getRedirectUrl 一致：XHR 跟随重定向拿 responseURL
+    const loginUrl = await webvpnTransport.syncCookiesViaXhr(wrapped, 20000);
+    // Upstream keeps the full tail after /login/form/. CAB's login payload can
+    // include query-like characters, so truncating at ?/# leaves the session invalid.
+    const payload = /\/login\/form\/(.+)$/.exec(loginUrl || '')?.[1];
+    if (!payload) {
+      throw new Error(
+        `cabLogin: no payload in finalUrl (${loginUrl || '(empty)'}); auth=${authAddress.slice(0, 80)}`,
+      );
+    }
+    await this.roamIdPolicy(credentials, payload);
+
+    // 与 thu-info-lib `cabLogin` 对齐：roam 后立刻用 userInfo 校验
+    // cab 会话是否真正落到当前账号。否则后续 roomInfos 会直接返回
+    // “用户未登录，请重新登录”，而调用方无法判断该不该重登。
+    const userInfoText = await webvpnTransport.fetchText(
+      ENDPOINTS.libRoomBookingUserInfo,
+    );
+    let parsed: {code?: number; message?: string; data?: {pid?: string}};
+    try {
+      parsed = JSON.parse(userInfoText);
+    } catch {
+      throw new Error(`cabLogin: userInfo 非 JSON (${userInfoText.slice(0, 80)})`);
+    }
+    if (parsed.code !== 0) {
+      throw new Error(parsed.message ?? 'cabLogin: userInfo 返回失败');
+    }
+    if (parsed.data?.pid !== credentials.studentId) {
+      throw new Error('cabLogin: userInfo pid mismatch');
+    }
   }
 
   private errorResult(message: string): LoginResult {

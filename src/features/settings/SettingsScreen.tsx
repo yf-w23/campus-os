@@ -14,16 +14,14 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {useDispatch, useSelector} from 'react-redux';
 import {useTranslation} from '../../app/i18n';
 import {colors, radii, spacing, typography} from '../../app/theme';
-import type {ColorScheme} from '../../app/theme';
 import {PrimaryButton} from '../common/components/Buttons';
 import {ScreenHeader} from '../common/components/Ui';
 import {AI_PRESETS} from '../../services/ai/agentService';
-import {selectAuth, selectSettings} from '../../state/selectors';
+import {selectAI, selectAuth, selectSettings} from '../../state/selectors';
 import {logout, setDemoMode} from '../../state/slices/authSlice';
 import {resetLearningDemo, resetLearningEmpty} from '../../state/slices/learningSlice';
 import {
   setAIApiKeyConfigured,
-  setColorScheme,
   setLocale,
   setTrustDevice,
 } from '../../state/slices/settingsSlice';
@@ -31,7 +29,6 @@ import {setProvider} from '../../state/slices/aiSlice';
 import {clearCredentials, saveAIApiKey} from '../../storage/secureStorage';
 import {
   clearSessionStudentId,
-  setColorScheme as persistColorScheme,
   setDemoMode as persistDemoMode,
   setLocale as persistLocale,
   setTrustDevice as persistTrustDevice,
@@ -74,13 +71,30 @@ export function SettingsScreen() {
   const dispatch = useDispatch();
   const auth = useSelector(selectAuth);
   const settings = useSelector(selectSettings);
+  const {provider} = useSelector(selectAI);
   const [apiKey, setApiKey] = useState('');
   const [selectedPreset, setSelectedPreset] = useState<AIProviderPreset>('deepseek');
+  // 自定义 provider 的 base URL / 模型名（仅 selectedPreset === 'custom' 时使用）
+  const [customBaseUrl, setCustomBaseUrl] = useState(
+    provider.preset === 'custom' ? provider.baseUrl ?? '' : '',
+  );
+  const [customModel, setCustomModel] = useState(
+    provider.preset === 'custom' ? provider.model : '',
+  );
 
   const handleSaveProvider = async () => {
-    const preset = AI_PRESETS[selectedPreset];
-    dispatch(setProvider(preset));
-    await setAIProviderConfig(preset);
+    let config = AI_PRESETS[selectedPreset];
+    if (selectedPreset === 'custom') {
+      const baseUrl = customBaseUrl.trim();
+      const model = customModel.trim();
+      if (!baseUrl || !model) {
+        Alert.alert('自定义服务', '请填写 Base URL 与模型名');
+        return;
+      }
+      config = {...AI_PRESETS.custom, baseUrl, model};
+    }
+    dispatch(setProvider(config));
+    await setAIProviderConfig(config);
     if (apiKey.trim()) {
       await saveAIApiKey(selectedPreset, apiKey.trim());
       dispatch(setAIApiKeyConfigured(true));
@@ -114,13 +128,6 @@ export function SettingsScreen() {
     dispatch(logout());
     dispatch(resetLearningEmpty());
     await persistDemoMode(false);
-  };
-
-  const handleSwitchScheme = async (next: ColorScheme) => {
-    if (next === settings.colorScheme) return;
-    dispatch(setColorScheme(next));
-    await persistColorScheme(next);
-    Alert.alert(t.settings.appearance, t.settings.appearanceRestart);
   };
 
   return (
@@ -165,32 +172,7 @@ export function SettingsScreen() {
             value={settings.locale === 'zh' ? '中文' : 'English'}
             onPress={handleToggleLocale}
             right={<Text style={styles.chev}>›</Text>}
-            divider
           />
-          <View style={styles.appearanceRow}>
-            <Text style={styles.rowLabel}>{t.settings.appearance}</Text>
-            <View style={styles.segment}>
-              {(['dark', 'light'] as const).map(s => {
-                const active = settings.colorScheme === s;
-                return (
-                  <Pressable
-                    key={s}
-                    onPress={() => handleSwitchScheme(s)}
-                    style={[styles.segmentItem, active && styles.segmentItemActive]}>
-                    <Text
-                      style={[
-                        styles.segmentText,
-                        active && styles.segmentTextActive,
-                      ]}>
-                      {s === 'dark'
-                        ? t.settings.appearanceDark
-                        : t.settings.appearanceLight}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
         </View>
 
         <Text style={styles.groupHeader}>{t.settings.aiProvider}</Text>
@@ -213,6 +195,30 @@ export function SettingsScreen() {
             </Pressable>
           ))}
         </View>
+
+        {selectedPreset === 'custom' ? (
+          <>
+            <TextInput
+              style={styles.input}
+              placeholder="Base URL（如 https://api.example.com/v1）"
+              placeholderTextColor={colors.textMuted}
+              value={customBaseUrl}
+              onChangeText={setCustomBaseUrl}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="模型名（如 gpt-4o-mini）"
+              placeholderTextColor={colors.textMuted}
+              value={customModel}
+              onChangeText={setCustomModel}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </>
+        ) : null}
 
         <TextInput
           style={styles.input}
@@ -310,35 +316,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: colors.textMuted,
     fontWeight: '300',
-  },
-  appearanceRow: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    gap: spacing.sm,
-  },
-  segment: {
-    flexDirection: 'row',
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radii.md,
-    padding: 3,
-  },
-  segmentItem: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radii.sm,
-  },
-  segmentItemActive: {
-    backgroundColor: colors.surface,
-  },
-  segmentText: {
-    ...typography.caption,
-    color: colors.textMuted,
-  },
-  segmentTextActive: {
-    color: colors.text,
-    fontWeight: '600',
   },
   presetRow: {
     flexDirection: 'row',

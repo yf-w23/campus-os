@@ -1,20 +1,18 @@
-import {ColorScheme, Palette, darkColors, getPalette} from './palettes';
+import {ColorScheme, Palette, lightColors, getPalette} from './palettes';
 
 /**
  * 运行时调色板 —— 一个可变对象。
  *
  * 业务代码 `import {colors}` 拿到的始终是同一个对象引用。
- * App 启动期 (Bootstrap) 先调 `applyScheme(savedScheme)` 把这个对象的字段
- * 填成对应的调色板，再动态 import AppNavigator —— 那时所有屏幕的
- * StyleSheet.create 才被求值，会读到正确的颜色。
+ * App 仅保留浅色模式，这里直接初始化为浅色调色板。
+ * `applyScheme` 保留为兼容旧调用签名的 no-op（始终应用浅色）。
  */
-export const colors: Palette = {...darkColors};
+export const colors: Palette = {...lightColors};
 
-let currentScheme: ColorScheme = 'dark';
+const currentScheme: ColorScheme = 'light';
 
-export function applyScheme(scheme: ColorScheme) {
-  currentScheme = scheme;
-  Object.assign(colors, getPalette(scheme));
+export function applyScheme(_scheme: ColorScheme = 'light') {
+  Object.assign(colors, getPalette('light'));
 }
 
 export function getColorScheme(): ColorScheme {

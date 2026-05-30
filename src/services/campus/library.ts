@@ -466,17 +466,67 @@ export async function cancelLibraryBooking(
 }
 
 // =============================================================
-// 研讨间
+// 研讨间（cab）— 对照 thu-info-lib library.ts cabFetch / cabLogin
 // =============================================================
 
-export interface RoomKind {
-  id: string;
+export interface LibRoomInfo {
+  kindId: number;
   kindName: string;
-  resvCount: number;
-  totalCount: number;
+  rooms: {devId: number; devName: string; minReserveTime: number}[];
 }
 
+export interface LibRoomUsage {
+  id: number;
+  start: Date;
+  end: Date;
+  title: string;
+  owner: string;
+  ownerId: string;
+}
+
+export interface LibRoomRes {
+  devId: number;
+  devName: string;
+  kindId: number;
+  kindName: string;
+  labId: number;
+  labName: string;
+  roomId: number;
+  roomName: string;
+  limit: number;
+  maxMinute: number;
+  minMinute: number;
+  cancelMinute: number;
+  maxUser: number;
+  minUser: number;
+  openStart: string | null;
+  openEnd: string | null;
+  usage: LibRoomUsage[];
+}
+
+let cabAccNo = -1;
 let cabLoginEnsured = false;
+
+async function cabFetch(url: string, jsonBody?: Record<string, unknown>): Promise<unknown> {
+  const text =
+    jsonBody === undefined
+      ? await webvpnTransport.fetchText(url)
+      : await webvpnTransport.fetchText(url, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(jsonBody),
+        });
+  let parsed: {code?: number; message?: string; data?: unknown};
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(`研读间接口响应非 JSON: ${text.slice(0, 80)}`);
+  }
+  if (parsed.code !== 0) {
+    throw new Error(parsed.message ?? '研读间接口返回失败');
+  }
+  return parsed.data;
+}
 
 async function ensureCabLogin(force = false): Promise<void> {
   if (cabLoginEnsured && !force) return;
@@ -499,64 +549,125 @@ async function withCabRetry<T>(fn: () => Promise<T>): Promise<T> {
   );
 }
 
-export async function getCabUserInfo(): Promise<{
-  pid: string;
-  accNo: number;
-}> {
-  await ensureCabLogin();
-  return withCabRetry(async () => {
-    const data = await libFetchJson<{data: {pid: string; accNo: number}}>(
-      LIBRARY_ROOM_BOOKING_USER_INFO_URL,
-    );
-    return {pid: data?.data?.pid ?? '', accNo: data?.data?.accNo ?? 0};
-  });
+async function assureCabSession(): Promise<void> {
+  const creds = await tsinghuaAuthService.hydrateCredentials();
+  const studentId = creds?.studentId ?? '';
+  if (!creds) {
+    throw new Error('未登录，无法访问研讨间预约');
+  }
+  if (cabLoginEnsured && cabAccNo !== -1) {
+    return;
+  }
+
+  const readUserInfo = async () =>
+    (await cabFetch(LIBRARY_ROOM_BOOKING_USER_INFO_URL)) as {
+      pid?: string;
+      accNo?: number;
+    };
+  const maskId = (value?: string) =>
+    value ? `${value.slice(0, 2)}***${value.slice(-2)}` : '(empty)';
+
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await ensureCabLogin(attempt > 0);
+      const info = await readUserInfo();
+      if (info.pid === studentId) {
+        cabAccNo = Number(info.accNo ?? -1);
+        return;
+      }
+      throw new Error(
+        `研读间账号不匹配：expected=${maskId(studentId)}, actual=${maskId(
+          info.pid,
+        )}`,
+      );
+    } catch (error) {
+      lastError = error;
+      // 与 upstream assureLoginValid 一致：userInfo 报未登录时，
+      // 重新 cabLogin 后再读一次。
+    }
+    cabLoginEnsured = false;
+    cabAccNo = -1;
+  }
+
+  const reason = lastError instanceof Error ? `：${lastError.message}` : '';
+  throw new Error(`研读间会话校验失败${reason}`);
 }
 
-export async function getLibraryRoomKindList(): Promise<RoomKind[]> {
-  await ensureCabLogin();
+/** 研读间类型与下属房间（thu-info getLibraryRoomBookingInfoList） */
+export async function getLibraryRoomBookingInfoList(): Promise<LibRoomInfo[]> {
   return withCabRetry(async () => {
-    const data = await libFetchJson<any>(LIBRARY_ROOM_BOOKING_ROOM_INFO_URL);
-    const obj = data?.data ?? {};
-    return Object.keys(obj).map(id => ({
-      id,
-      kindName: obj[id]?.kindName ?? '',
-      resvCount: Number(obj[id]?.resvCount ?? 0),
-      totalCount: Number(obj[id]?.totalCount ?? 0),
+    await assureCabSession();
+    const data = (await cabFetch(LIBRARY_ROOM_BOOKING_ROOM_INFO_URL)) as any[];
+    if (!Array.isArray(data)) return [];
+    return data.map(item => ({
+      kindId: Number(item.kindId),
+      kindName: String(item.kindName ?? ''),
+      rooms: (item.roomInfos ?? []).map((info: any) => ({
+        devId: Number(info.devId),
+        devName: String(info.devName ?? ''),
+        minReserveTime: Number(info.minResvTime ?? 0),
+      })),
     }));
   });
 }
 
-export interface RoomResource {
-  resourceId: number;
-  resourceName: string;
-  openStart: string;
-  openEnd: string;
-  maxUser: number;
-  minUser: number;
-  available: boolean;
-}
-
-export async function getLibraryRoomResourceList(): Promise<RoomResource[]> {
-  await ensureCabLogin();
+/** 某日某类型的可预约研讨间资源（date: yyyyMMdd） */
+export async function getLibraryRoomBookingResourceList(
+  dateYmd: string,
+  kindId: number,
+): Promise<LibRoomRes[]> {
   return withCabRetry(async () => {
-    const data = await libFetchJson<{data: any[]}>(
-      LIBRARY_ROOM_BOOKING_RESOURCE_LIST_URL,
-    );
-    const list = data?.data ?? [];
-    if (!Array.isArray(list)) return [];
-    return list.map((n: any) => ({
-      resourceId: n.resourceId,
-      resourceName: n.resourceName ?? '',
-      openStart: n.openStart ?? '',
-      openEnd: n.openEnd ?? '',
-      maxUser: Number(n.maxUser ?? 0),
-      minUser: Number(n.minUser ?? 0),
-      available: n.isValid === 1 || n.isValid === undefined,
+    await assureCabSession();
+    const data = (await cabFetch(
+      `${LIBRARY_ROOM_BOOKING_RESOURCE_LIST_URL}&resvDates=${dateYmd}&kindIds=${kindId}`,
+    )) as any[];
+    if (!Array.isArray(data)) return [];
+    return data.map(item => ({
+      devId: Number(item.devId),
+      devName: String(item.devName ?? ''),
+      kindId: Number(item.kindId),
+      kindName: String(item.kindName ?? ''),
+      labId: Number(item.labId),
+      labName: String(item.labName ?? ''),
+      roomId: Number(item.roomId),
+      roomName: String(item.roomName ?? ''),
+      limit: Number(item.resvRule?.limit ?? 0),
+      maxMinute: Number(item.resvRule?.maxResvTime ?? 0),
+      minMinute: Number(item.resvRule?.minResvTime ?? 0),
+      cancelMinute: Number(item.resvRule?.cancelTime ?? 0),
+      maxUser: Number(item.maxUser ?? 0),
+      minUser: Number(item.minUser ?? 0),
+      openStart: item.openStart ?? null,
+      openEnd: item.openEnd ?? null,
+      usage: (item.resvInfo ?? []).map((info: any) => ({
+        id: Number(info.resvId),
+        start: new Date(info.startTime),
+        end: new Date(info.endTime),
+        title: String(info.title ?? ''),
+        owner: String(info.trueName ?? ''),
+        ownerId: String(info.logonName ?? ''),
+      })),
     }));
   });
+}
+
+export function formatLibRoomDateYmd(offsetDays: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+}
+
+export function formatLibRoomDateIso(offsetDays: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 export function clearLibrarySessionCache(): void {
   libraryAccessEnsured = false;
   cabLoginEnsured = false;
+  cabAccNo = -1;
 }

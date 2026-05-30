@@ -12,7 +12,7 @@ const initialState: SettingsSliceState = {
   locale: 'zh',
   trustDevice: true,
   aiApiKeyConfigured: false,
-  colorScheme: 'dark',
+  colorScheme: 'light',
 };
 
 const settingsSlice = createSlice({

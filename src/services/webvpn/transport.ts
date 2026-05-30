@@ -70,6 +70,8 @@ const GBK_WEBVPN_TOKENS = [
   'fdee49932a3526446d0187ab9040227bca90a6e14cc9',
   // cr_xk — 选课系统
   'eaff4b8b3f3b2653770bc7b88b5c2d320506b1aec738590a49ba',
+  // gymbook — 体育场馆预约
+  'a5a70f8834396657761d88e29d51367b6a00',
 ];
 
 function inferResponseCharset(url: string, contentType: string): string {

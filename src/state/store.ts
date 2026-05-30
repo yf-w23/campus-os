@@ -1,6 +1,7 @@
 import {configureStore} from '@reduxjs/toolkit';
 import authReducer from './slices/authSlice';
 import learningReducer from './slices/learningSlice';
+import scheduleReducer from './slices/scheduleSlice';
 import aiReducer from './slices/aiSlice';
 import settingsReducer from './slices/settingsSlice';
 
@@ -8,6 +9,7 @@ export const store = configureStore({
   reducer: {
     auth: authReducer,
     learning: learningReducer,
+    schedule: scheduleReducer,
     ai: aiReducer,
     settings: settingsReducer,
   },

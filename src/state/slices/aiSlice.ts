@@ -1,6 +1,11 @@
 import {createSlice, PayloadAction} from '@reduxjs/toolkit';
 import {v4 as uuidv4} from 'uuid';
-import {AIProviderConfig, ChatMessage, Conversation} from '../../domain/agent';
+import {
+  AIProviderConfig,
+  ChatMessage,
+  Conversation,
+  ToolTrace,
+} from '../../domain/agent';
 
 interface AISliceState {
   conversations: Conversation[];
@@ -8,6 +13,8 @@ interface AISliceState {
   streaming: boolean;
   error?: string;
   provider: Omit<AIProviderConfig, 'apiKey'>;
+  /** 当前 agent 正在执行的工具状态行（过程可视化），空闲时 undefined */
+  agentStatus?: string;
 }
 
 const initialState: AISliceState = {
@@ -18,7 +25,7 @@ const initialState: AISliceState = {
     preset: 'deepseek',
     label: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com/v1',
-    model: 'deepseek-chat',
+    model: 'deepseek-v4-flash',
   },
 };
 
@@ -122,6 +129,36 @@ const aiSlice = createSlice({
     setAIError(state, action: PayloadAction<string | undefined>) {
       state.error = action.payload;
     },
+    setAgentStatus(state, action: PayloadAction<string | undefined>) {
+      state.agentStatus = action.payload;
+    },
+    /** 给当前 assistant 消息追加一条工具调用轨迹 */
+    pushToolTrace(state, action: PayloadAction<ToolTrace>) {
+      const conv = activeConv(state);
+      const last = conv?.messages[conv.messages.length - 1];
+      if (last?.role === 'assistant') {
+        if (!last.toolTraces) {
+          last.toolTraces = [];
+        }
+        last.toolTraces.push(action.payload);
+      }
+    },
+    /** 更新当前 assistant 消息最后一条工具轨迹的状态/详情 */
+    updateLastToolTrace(
+      state,
+      action: PayloadAction<{status: ToolTrace['status']; detail?: string}>,
+    ) {
+      const conv = activeConv(state);
+      const last = conv?.messages[conv.messages.length - 1];
+      const traces = last?.toolTraces;
+      if (traces && traces.length) {
+        const t = traces[traces.length - 1];
+        t.status = action.payload.status;
+        if (action.payload.detail !== undefined) {
+          t.detail = action.payload.detail;
+        }
+      }
+    },
     setProvider(state, action: PayloadAction<Omit<AIProviderConfig, 'apiKey'>>) {
       state.provider = action.payload;
     },
@@ -139,6 +176,9 @@ export const {
   setStreaming,
   setAIError,
   setProvider,
+  setAgentStatus,
+  pushToolTrace,
+  updateLastToolTrace,
 } = aiSlice.actions;
 
 export default aiSlice.reducer;

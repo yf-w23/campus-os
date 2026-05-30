@@ -1,5 +1,6 @@
 import {AIProviderConfig, AIProviderPreset, AgentContext, ChatMessage} from '../../domain/agent';
 import {LearningSnapshot} from '../../domain/learning';
+import {AgentTool, getToolByName, toolSpecs} from './tools';
 
 export const AI_PRESETS: Record<
   AIProviderPreset,
@@ -15,19 +16,19 @@ export const AI_PRESETS: Record<
     preset: 'deepseek',
     label: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com/v1',
-    model: 'deepseek-chat',
+    model: 'deepseek-v4-flash',
   },
   qwen: {
     preset: 'qwen',
     label: '通义千问',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    model: 'qwen-plus',
+    model: 'qwen3.7-max',
   },
   moonshot: {
     preset: 'moonshot',
     label: 'Moonshot',
     baseUrl: 'https://api.moonshot.cn/v1',
-    model: 'moonshot-v1-8k',
+    model: 'kimi-k2.6',
   },
   custom: {
     preset: 'custom',
@@ -62,12 +63,19 @@ function normalizeDate(s: string | undefined | null): string {
 
 export function buildAgentContext(
   snapshot: LearningSnapshot | null | undefined,
+  extra?: {memorySummary?: string; studentId?: string; demoMode?: boolean},
 ): AgentContext {
   const today = todayLocalISO();
   const todayDate = `${today} ${weekdayCN()}`;
+  const base = {
+    memorySummary: extra?.memorySummary,
+    studentId: extra?.studentId,
+    demoMode: extra?.demoMode,
+  };
 
   if (!snapshot) {
     return {
+      ...base,
       todayDate,
       todaySummary: '今天暂无课表数据（尚未同步或同步失败）',
       scheduleSummary: '暂无课表数据（尚未同步或同步失败）',
@@ -98,6 +106,7 @@ export function buildAgentContext(
     .join('\n');
 
   return {
+    ...base,
     todayDate,
     todaySummary: todayClasses || '今天没有课程安排',
     scheduleSummary: schedule || '暂无课表数据',
@@ -107,11 +116,30 @@ export function buildAgentContext(
 }
 
 export function buildSystemPrompt(context: AgentContext): string {
-  return [
-    '你是 Campus OS 的校园学习助手，只能基于提供的校园数据进行只读分析和总结。',
-    '你不能提交作业、修改课表、发送通知或执行任何写操作。',
-    `今天是 ${context.todayDate}。当用户问“今天/明天/本周”等相对时间时，一律以这个日期为准，不要自行推断或臆造日期。`,
-    '如果数据不足，请明确说明并给出下一步建议。',
+  const lines: string[] = [
+    '你是 Campus OS 的校园智能体（agent），不只是问答助手——你可以通过“工具”实时查询校园数据，并在用户授权下替用户完成操作（如预约图书馆座位、电费充值）。',
+    `今天是 ${context.todayDate}。当用户问“今天/明天/本周”等相对时间时，一律以这个日期为准，不要臆造日期。`,
+    '',
+    '## 工具使用原则',
+    '- 需要实时/精确数据（成绩、电费余额、图书馆空位、作业详情）时，调用相应工具获取，不要凭注入摘要臆测。',
+    '- 预约座位、电费充值、添加/删除个人备忘日程属于写操作，会触发用户二次确认。',
+    '- 问「这周/某天有什么安排」时优先用 get_week_schedule；仅查用户自建备忘用 list_personal_events。不能删除或修改教务课表，只能增删个人备忘。',
+    '- 预约图书馆座位按"列馆→列楼层→列分区→找座位→预约"的顺序逐步推进，不要反复试探。',
+    '- 预约座位前若用户没指定地点，优先使用其常用图书馆（见下方记忆）；仍不确定时先询问。',
+    '- 用户表达明确长期偏好（常去哪、默认充值多少、关注哪些课）时，用 remember_preference 记住。',
+    '- 操作完成后用简洁中文向用户复述结果（成功/失败/下一步）。',
+    '- 【重要】展示工具返回的具体数据（座位号 seatName、成绩、电量、金额、日期等）时，必须逐字原样引用工具结果，严禁编造、改写、推测或用"范围/区间"概括座位号；项目较多时可只列前若干个真实值并注明"等"，但绝不能虚构编号。预约座位时必须使用工具返回的真实 seatId/seatType，不能凭座位号猜测。',
+  ];
+  if (context.demoMode) {
+    lines.push('- 当前为演示模式：实时查询与写操作不可用，请提示用户退出演示模式并登录。');
+  }
+  lines.push(
+    '',
+    '## 关于用户',
+    context.studentId ? `学号：${context.studentId}` : '（未获取到学号）',
+    '',
+    '## 个性化记忆',
+    context.memorySummary ?? '（暂无个性化记忆）',
     '',
     '## 今日课表（已按今天的真实日期筛选）',
     context.todaySummary,
@@ -124,7 +152,8 @@ export function buildSystemPrompt(context: AgentContext): string {
     '',
     '## 课程列表',
     context.courseSummary,
-  ].join('\n');
+  );
+  return lines.join('\n');
 }
 
 export async function streamChatCompletion(
@@ -240,6 +269,156 @@ export async function streamChatCompletion(
   }
 
   return fullText;
+}
+
+// ============================================================
+// Agent loop —— 支持工具调用（function-calling）的多轮推理
+// ============================================================
+
+export interface AgentCallbacks {
+  /** 最终回答文本（一次性给出）*/
+  onAnswer: (text: string) => void;
+  /** 工具开始执行（用于过程可视化）*/
+  onToolStart?: (tool: AgentTool, args: unknown) => void;
+  /** 工具执行结束 */
+  onToolEnd?: (tool: AgentTool, ok: boolean, detail?: string) => void;
+  /** 写操作二次确认；返回 true 才执行 */
+  requestConfirmation?: (tool: AgentTool, args: unknown) => Promise<boolean>;
+}
+
+interface OpenAIToolCall {
+  id: string;
+  type?: string;
+  function: {name: string; arguments: string};
+}
+
+const MAX_AGENT_ROUNDS = 6;
+
+async function postChatCompletion(
+  provider: AIProviderConfig,
+  body: Record<string, unknown>,
+): Promise<any> {
+  const baseUrl = provider.baseUrl || AI_PRESETS[provider.preset].baseUrl;
+  if (!baseUrl || !provider.apiKey) {
+    throw new Error('请先配置 AI Provider 与 API Key');
+  }
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${provider.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({model: provider.model, ...body}),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`AI 请求失败: ${response.status} ${errorText}`);
+  }
+  return response.json();
+}
+
+function summarizeToolResult(result: unknown): string | undefined {
+  if (result && typeof result === 'object') {
+    const r = result as Record<string, unknown>;
+    if (typeof r.message === 'string') return r.message;
+    if (r.error) return String(r.error);
+    if (r.ok === true) return '成功';
+    if (r.ok === false) return '失败';
+  }
+  return undefined;
+}
+
+/**
+ * 运行一轮"对话→（按需调用工具）→…→最终回答"的 agent 循环。
+ *
+ * 与 streamChatCompletion 的区别：此函数会带 tools 给模型，处理 tool_calls，
+ * 真正去查数据 / 执行操作（写操作经 requestConfirmation 确认），再把结果回灌，
+ * 直到模型给出不含工具调用的最终回答。
+ */
+export async function runAgent(
+  provider: AIProviderConfig,
+  messages: ChatMessage[],
+  context: AgentContext,
+  callbacks: AgentCallbacks,
+): Promise<string> {
+  const convo: any[] = [
+    {role: 'system', content: buildSystemPrompt(context)},
+    ...messages.map(m => ({role: m.role, content: m.content})),
+  ];
+  const tools = toolSpecs();
+
+  for (let round = 0; round < MAX_AGENT_ROUNDS; round += 1) {
+    const data = await postChatCompletion(provider, {
+      messages: convo,
+      tools,
+      tool_choice: 'auto',
+      stream: false,
+    });
+    const message = data?.choices?.[0]?.message;
+    const toolCalls: OpenAIToolCall[] | undefined = message?.tool_calls;
+
+    if (!toolCalls || toolCalls.length === 0) {
+      const answer = String(message?.content ?? '').trim();
+      const finalText = answer || '（模型未返回内容）';
+      callbacks.onAnswer(finalText);
+      return finalText;
+    }
+
+    // 把模型的工具调用意图压回对话
+    convo.push({
+      role: 'assistant',
+      content: message.content ?? '',
+      tool_calls: toolCalls,
+    });
+
+    for (const call of toolCalls) {
+      const tool = getToolByName(call.function?.name ?? '');
+      let result: unknown;
+
+      if (!tool) {
+        result = {error: `未知工具：${call.function?.name}`};
+      } else {
+        let args: Record<string, unknown> = {};
+        try {
+          args = call.function.arguments ? JSON.parse(call.function.arguments) : {};
+        } catch {
+          args = {};
+        }
+
+        let cancelled = false;
+        if (tool.requiresConfirmation && callbacks.requestConfirmation) {
+          const ok = await callbacks.requestConfirmation(tool, args);
+          if (!ok) {
+            cancelled = true;
+            result = {ok: false, cancelled: true, message: '用户取消了该操作'};
+            callbacks.onToolEnd?.(tool, false, '已取消');
+          }
+        }
+
+        if (!cancelled) {
+          callbacks.onToolStart?.(tool, args);
+          try {
+            result = await tool.run(args);
+            callbacks.onToolEnd?.(tool, true, summarizeToolResult(result));
+          } catch (e) {
+            const detail = e instanceof Error ? e.message : String(e);
+            result = {error: detail};
+            callbacks.onToolEnd?.(tool, false, detail);
+          }
+        }
+      }
+
+      convo.push({
+        role: 'tool',
+        tool_call_id: call.id,
+        content: JSON.stringify(result ?? {}),
+      });
+    }
+  }
+
+  const fallback = '（已达到工具调用上限，请补充信息或拆分需求后再试）';
+  callbacks.onAnswer(fallback);
+  return fallback;
 }
 
 export function createMockAgentReply(question: string, context: AgentContext): string {

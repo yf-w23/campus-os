@@ -1,5 +1,10 @@
 import {parseUrlToWebVPN} from '../src/services/webvpn/parseUrl';
 import {mapScheduleRows, normalizeScheduleTime} from '../src/services/campus/scheduleParser';
+import {
+  buildWeekSliceViews,
+  flattenSchedulesToEvents,
+  parseScheduleJson,
+} from '../src/services/campus/scheduleModel';
 import {buildAgentContext} from '../src/services/ai/agentService';
 import {demoLearningSnapshot} from '../src/fixtures/demoData';
 import {
@@ -37,6 +42,35 @@ describe('schedule parsing', () => {
 
     expect(rows[0].startTime).toBe('08:00');
     expect(rows[0].endTime).toBe('09:35');
+  });
+
+  it('keeps full semester schedule slices addressable by week', () => {
+    const schedules = parseScheduleJson([
+      {
+        nq: '2026-05-26',
+        nr: '数据结构',
+        dd: '六教',
+        fl: '必修课',
+        kssj: '08:00',
+        jssj: '09:35',
+      },
+      {
+        nq: '2026-06-02',
+        nr: '数据结构',
+        dd: '六教',
+        fl: '必修课',
+        kssj: '08:00',
+        jssj: '09:35',
+      },
+    ]);
+
+    const firstWeek = buildWeekSliceViews(schedules, '2026-05-25', 18, 0);
+    const secondWeek = buildWeekSliceViews(schedules, '2026-05-25', 18, 1);
+    const events = flattenSchedulesToEvents(schedules);
+
+    expect(firstWeek).toHaveLength(1);
+    expect(secondWeek).toHaveLength(1);
+    expect(events.map(e => e.date)).toEqual(['2026-05-26', '2026-06-02']);
   });
 });
 

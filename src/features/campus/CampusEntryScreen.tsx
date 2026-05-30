@@ -28,6 +28,8 @@ interface EntryItem {
   subtitle: string;
   url: string;
   accent: string;
+  /** 若提供则跳转到对应 native 屏幕（跳过 WebView 与子系统激活）*/
+  navigateTo?: keyof RootStackParamList;
 }
 
 interface Props {
@@ -93,6 +95,11 @@ export function CampusEntryScreen({
   const [activatingHint, setActivatingHint] = useState('正在准备会话…');
 
   const open = async (item: EntryItem) => {
+    // native 子页面：直接跳转，会话由目标屏幕自行激活
+    if (item.navigateTo) {
+      navigation.navigate(item.navigateTo);
+      return;
+    }
     const entryConfig = SUBSYSTEM_ENTRIES[item.url] ?? {
       url: item.url,
       kind: 'none' as SubsystemKind,

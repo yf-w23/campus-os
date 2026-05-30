@@ -33,13 +33,15 @@ export function DormitoryScreen({navigation}: EntryScreenProps<'CampusDormitory'
           title: '电费余额',
           subtitle: '查询当前余额与更新时间',
           url: DORM_ELE_DETAIL_URL,
-          accent: '#A78BFA',
+          accent: '#7C5CFA',
+          navigateTo: 'CampusEleBalance',
         },
         {
           title: '电费充值',
           subtitle: '在线给宿舍房间充值',
           url: DORM_ELE_URL,
-          accent: '#A78BFA',
+          accent: '#7C5CFA',
+          navigateTo: 'CampusEleRecharge',
         },
         {
           title: '宿舍服务系统',
@@ -55,7 +57,7 @@ export function DormitoryScreen({navigation}: EntryScreenProps<'CampusDormitory'
 export function ReservationScreen({
   navigation,
 }: EntryScreenProps<'CampusReservation'>) {
-  // 场馆预约 = 图书馆 + 研讨间 — 现在走 native 实现（参照 thu-info-app）
+  // 图书馆预约：座位 + 研读间（cab 登录）— native，参照 thu-info-app
   // 进入后直接 navigate 到 LibraryNativeScreen 的双 tab 浏览页
   React.useEffect(() => {
     navigation.replace('CampusLibrary');

@@ -13,12 +13,11 @@ import {
   LEARN_BASE,
   learnCourseListUrl,
   learnFileListUrl,
-  learnHomeworkListUrl,
   learnNotificationListUrl,
   withCsrf,
 } from '../webvpn/constants';
 import {tsinghuaAuthService} from '../auth/tsinghuaAuth';
-import {parseJsonpSchedule, mapScheduleRows} from './scheduleParser';
+import {CampusSchedulePack, fetchScheduleSync} from './scheduleService';
 
 /** 兼容旧 API（已废弃，但 thunks 还在调） */
 export function clearLearnSessionCache(): void {
@@ -49,7 +48,9 @@ function formatDateTime(value: unknown): string {
   }
   if (typeof value === 'number') {
     const d = new Date(value);
-    if (isNaN(d.getTime())) return '';
+    if (isNaN(d.getTime())) {
+      return '';
+    }
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
   const text = String(value);
@@ -64,6 +65,28 @@ function formatDateTime(value: unknown): string {
     return formatDateTime(ts);
   }
   return text;
+}
+
+function mapCompletionType(value: unknown): string | undefined {
+  const v = String(value ?? '');
+  if (v === '1') {
+    return '个人完成';
+  }
+  if (v === '2') {
+    return '小组完成';
+  }
+  return undefined;
+}
+
+function mapSubmissionType(value: unknown): string | undefined {
+  const v = String(value ?? '');
+  if (v === '2') {
+    return '网络学堂提交';
+  }
+  if (v === '0') {
+    return '线下提交';
+  }
+  return undefined;
 }
 
 function classifyHomework(
@@ -104,42 +127,9 @@ async function postLearnAoData(path: string, courseId?: string): Promise<any> {
   });
 }
 
-// ====== 课表（通过 zhjw 教务系统，webvpn 漫游）======
-function formatScheduleDate(date: Date): string {
-  return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
-}
-
-// 与 thu-info-lib strings.ts JXRL_BKS_PREFIX 完全一致：本科生教学日历，走 webvpn /http/ 包装。
-// 该 zhjw token 已在 transport 的 GBK 列表里，中文不会乱码。
-const JXRL_BKS_WEBVPN_URL =
-  'https://webvpn.tsinghua.edu.cn/http/77726476706e69737468656265737421eaff4b8b69336153301c9aa596522b20bc86e6e559a9b290/jxmh_out.do';
-// thu-info getPrimary 用的 default 漫游 payload（注册教务子系统会话）
-const REGISTRAR_ROAM_PAYLOAD = '287C0C6D90ABB364CD5FDF1495199962';
-
-export async function fetchScheduleRange(
-  startDate: string,
-  endDate: string,
-): Promise<ScheduleEvent[]> {
-  const url = `${JXRL_BKS_WEBVPN_URL}?m=bks_jxrl_all&p_start_date=${startDate}&p_end_date=${endDate}&jsoncallback=m`;
-  // 与 thu-info-lib getPrimary 同构：roamingWrapper(policy="default", payload)。
-  // 先直接取（登录已建立 webvpn 会话）；失败再 roamDefault 注册 zhjw 子系统，
-  // 仍失败则 withSessionRecovery 第二层完整重登。
-  return tsinghuaAuthService.withSessionRecovery(
-    async () => {
-      const raw = await webvpnTransport.fetchText(url);
-      const rows = parseJsonpSchedule(raw);
-      // 合法响应是 `m([...])`；取不到数组多半是漫游未建立 / 落回登录页 → 抛错触发恢复
-      if (rows.length === 0 && raw.indexOf('[') < 0) {
-        throw new Error(`schedule: invalid JSONP (head=${raw.slice(0, 60)})`);
-      }
-      return mapScheduleRows(rows);
-    },
-    () =>
-      webvpnTransport
-        .roamDefault(REGISTRAR_ROAM_PAYLOAD)
-        .then(() => undefined),
-    'schedule',
-  );
+export interface LearningCoreResult {
+  snapshot: LearningSnapshot;
+  schedulePack?: CampusSchedulePack;
 }
 
 // ====== 课程列表 ======
@@ -199,6 +189,14 @@ async function fetchHomeworkForCourse(course: CourseInfo): Promise<HomeworkItem[
           isLateSubmission: row.sfbj === '是',
           status: classifyHomework(ep.submitted, ep.graded, deadline),
           grade: row.cj != null ? Number(row.cj) : undefined,
+          // zywcfs：1=个人完成 2=小组完成（对照 thu-learn-lib HomeworkCompletionType）
+          completionType: mapCompletionType(row.zywcfs),
+          // zytjfs：2=网络学堂提交 0=线下提交（对照 HomeworkSubmissionType）
+          submissionType: mapSubmissionType(row.zytjfs),
+          submitTime: formatDateTime(row.scsj) || undefined,
+          graderName: (row.jsm ?? '').trim() || undefined,
+          gradeContent: (row.pynr ?? '').trim() || undefined,
+          gradeTime: formatDateTime(row.pysj) || undefined,
           url: `${LEARN_BASE}/f/wlxt/kczy/zy/student/viewCj?wlkcid=${wlkcid}&xszyid=${row.xszyid}`,
         });
       }
@@ -308,46 +306,38 @@ export async function fetchCourseFiles(courses: CourseInfo[]): Promise<CourseFil
 }
 
 // ====== 聚合 ======
-async function fetchLearningCoreSnapshotInner(): Promise<LearningSnapshot> {
-  // 1) 拉课程
+async function fetchLearningCoreSnapshotInner(): Promise<LearningCoreResult> {
   const courses = await fetchCourses();
 
-  // 2) 拉课表（zhjw 漫游）—— 往前回看 1 天，往后 28 天，确保今日一定在窗口内
   let schedule: ScheduleEvent[] = [];
+  let schedulePack: CampusSchedulePack | undefined;
   try {
-    const today = new Date();
-    const start = new Date(today);
-    start.setDate(start.getDate() - 1);
-    const end = new Date(today);
-    end.setDate(end.getDate() + 28);
-    schedule = await fetchScheduleRange(
-      formatScheduleDate(start),
-      formatScheduleDate(end),
-    );
+    const result = await fetchScheduleSync();
+    schedule = result.events;
+    schedulePack = result.pack;
   } catch {
-    // 课表失败不阻塞
+    // 课表失败不阻塞其它数据（与首页今日课表同源拉取）
   }
 
-  // 3) 拉作业
   let homework: HomeworkItem[] = [];
   if (courses.length) {
     homework = await fetchHomework(courses);
   }
 
   return {
-    courses,
-    schedule,
-    notifications: [],
-    homework,
-    files: [],
-    fetchedAt: new Date().toISOString(),
+    snapshot: {
+      courses,
+      schedule,
+      notifications: [],
+      homework,
+      files: [],
+      fetchedAt: new Date().toISOString(),
+    },
+    schedulePack,
   };
 }
 
-export async function fetchLearningCoreSnapshot(): Promise<LearningSnapshot> {
-  // 经会话恢复包裹：冷启动恢复登录后内存 csrf 为空 / cookie 失效时，
-  // 第一次 fetchCourses 抛错会触发 withSessionRecovery 用 Keychain 凭证静默重登，
-  // 重新建立 learn 会话 + csrf 后重试整条链路。与 thu-info verifyAndReLogin 对齐。
+export async function fetchLearningCoreSnapshot(): Promise<LearningCoreResult> {
   return tsinghuaAuthService.withSessionRecovery(
     () => fetchLearningCoreSnapshotInner(),
     undefined,
@@ -373,7 +363,7 @@ export async function fetchLearningExtras(
 }
 
 export async function fetchLearningSnapshot(): Promise<LearningSnapshot> {
-  const core = await fetchLearningCoreSnapshot();
-  const extras = await fetchLearningExtras(core.courses);
-  return {...core, ...extras, fetchedAt: new Date().toISOString()};
+  const {snapshot} = await fetchLearningCoreSnapshot();
+  const extras = await fetchLearningExtras(snapshot.courses);
+  return {...snapshot, ...extras, fetchedAt: new Date().toISOString()};
 }

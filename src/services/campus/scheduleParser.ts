@@ -51,8 +51,38 @@ export function normalizeScheduleDate(value: string | undefined | null): string 
   return s;
 }
 
+/** 稳定去重键：日期 + grrlID（或内容指纹），避免跨天共用同一 id 被误删 */
+export function scheduleEventDedupeKey(event: ScheduleEvent): string {
+  const date = normalizeScheduleDate(event.date);
+  const id = (event.id ?? '').trim();
+  if (id) {
+    return `${date}|id:${id}`;
+  }
+  return [
+    date,
+    event.title,
+    event.startTime,
+    event.endTime,
+    event.location ?? '',
+  ].join('|');
+}
+
+export function dedupeScheduleEvents(events: ScheduleEvent[]): ScheduleEvent[] {
+  const seen = new Set<string>();
+  const out: ScheduleEvent[] = [];
+  for (const event of events) {
+    const key = scheduleEventDedupeKey(event);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    out.push(event);
+  }
+  return out;
+}
+
 export function mapScheduleRows(rows: RawScheduleRow[]): ScheduleEvent[] {
-  return rows.map(row => {
+  const mapped = rows.map(row => {
     const date = normalizeScheduleDate(row.nq);
     return {
       id: row.grrlID ?? `${date}-${row.nr}-${row.kssj}`,
@@ -64,4 +94,5 @@ export function mapScheduleRows(rows: RawScheduleRow[]): ScheduleEvent[] {
       category: row.fl,
     };
   });
+  return dedupeScheduleEvents(mapped);
 }

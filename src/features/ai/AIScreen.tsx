@@ -20,15 +20,17 @@ import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {useTranslation} from '../../app/i18n';
 import {colors, radii, spacing, typography} from '../../app/theme';
 import {RootStackParamList, RootTabParamList} from '../../app/navigation/types';
-import {ChatMessage, Conversation} from '../../domain/agent';
+import {ChatMessage, Conversation, ToolTrace} from '../../domain/agent';
 import {
   clearActiveConversation,
   deleteConversation,
   setActiveConversation,
 } from '../../state/slices/aiSlice';
 import {
+  selectAI,
   selectActiveConversationId,
   selectConversations,
+  selectLearning,
 } from '../../state/selectors';
 import {AppDispatch} from '../../state/store';
 import {Chip} from '../common/components/Chip';
@@ -62,6 +64,58 @@ function previewOf(conv: Conversation): string {
   return text.length > 40 ? `${text.slice(0, 40)}…` : text;
 }
 
+const traceIcon: Record<ToolTrace['status'], string> = {
+  running: '⏳',
+  success: '✓',
+  error: '✕',
+  cancelled: '⊘',
+};
+
+function ToolTraceList({traces}: {traces: ToolTrace[]}) {
+  return (
+    <View style={styles.traceWrap}>
+      {traces.map((tr, i) => (
+        <View key={i} style={styles.traceRow}>
+          <Text
+            style={[
+              styles.traceIcon,
+              tr.status === 'success' && {color: colors.success},
+              tr.status === 'error' && {color: colors.error},
+              tr.status === 'cancelled' && {color: colors.textMuted},
+            ]}>
+            {traceIcon[tr.status]}
+          </Text>
+          <Text style={styles.traceLabel} numberOfLines={2}>
+            {tr.label}
+            {tr.detail ? <Text style={styles.traceDetail}> · {tr.detail}</Text> : null}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** 根据真实校园数据生成主动建议（AI-native：从"你问我答"到"我替你想到"）*/
+function buildSuggestions(
+  snapshot: ReturnType<typeof selectLearning>['snapshot'],
+  fallback: string[],
+): string[] {
+  if (!snapshot) {
+    return fallback;
+  }
+  const out: string[] = [];
+  const pending = snapshot.homework.filter(h => !h.submitted);
+  if (pending[0]) {
+    out.push(`「${pending[0].title}」这个作业有什么要求？`);
+  }
+  if (pending.length > 0) {
+    out.push('我还有哪些作业没交？按截止时间排一下');
+  }
+  out.push('我的电费还够用吗？不够就帮我充值');
+  out.push('李文正馆现在还有空位吗？有的话帮我订一个');
+  return out.slice(0, 4);
+}
+
 function ChatBubble({message, index}: {message: ChatMessage; index: number}) {
   const isUser = message.role === 'user';
 
@@ -90,7 +144,12 @@ function ChatBubble({message, index}: {message: ChatMessage; index: number}) {
           <Text style={styles.aiAvatarText}>✦</Text>
         </LinearGradient>
         <View style={styles.aiBody}>
-          <MarkdownText content={message.content} streaming={message.streaming} />
+          {message.toolTraces && message.toolTraces.length > 0 ? (
+            <ToolTraceList traces={message.toolTraces} />
+          ) : null}
+          {message.content ? (
+            <MarkdownText content={message.content} streaming={message.streaming} />
+          ) : null}
         </View>
       </View>
     </StaggerItem>
@@ -104,8 +163,11 @@ export function AIScreen({route, navigation}: AIScreenProps) {
     useAIChat();
   const conversations = useSelector(selectConversations);
   const activeConversationId = useSelector(selectActiveConversationId);
+  const {agentStatus} = useSelector(selectAI);
+  const {snapshot} = useSelector(selectLearning);
   const activeConversation =
     conversations.find(c => c.id === activeConversationId) ?? null;
+  const suggestions = buildSuggestions(snapshot, t.ai.suggestions);
 
   const [input, setInput] = useState('');
   const [view, setView] = useState<'list' | 'chat'>(
@@ -299,7 +361,7 @@ export function AIScreen({route, navigation}: AIScreenProps) {
             <Text style={styles.emptyTitle}>{t.ai.emptyTitle}</Text>
             <Text style={styles.emptyDesc}>{t.ai.emptyDesc}</Text>
             <View style={styles.suggestionWrap}>
-              {t.ai.suggestions.map((label, index) => (
+              {suggestions.map((label, index) => (
                 <Chip
                   key={label}
                   label={label}
@@ -331,6 +393,14 @@ export function AIScreen({route, navigation}: AIScreenProps) {
             style={styles.composerFade}
             pointerEvents="none"
           />
+          {agentStatus ? (
+            <View style={styles.agentStatusRow}>
+              <Text style={styles.agentStatusDot}>✦</Text>
+              <Text style={styles.agentStatusText} numberOfLines={1}>
+                {agentStatus}…
+              </Text>
+            </View>
+          ) : null}
           <View style={styles.composer}>
             <TextInput
               style={styles.input}
@@ -606,6 +676,51 @@ const styles = StyleSheet.create({
   aiBody: {
     flex: 1,
     paddingTop: 2,
+    gap: 6,
+  },
+  traceWrap: {
+    gap: 4,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  traceRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+  },
+  traceIcon: {
+    ...typography.micro,
+    color: colors.primary,
+    width: 14,
+    textAlign: 'center',
+  },
+  traceLabel: {
+    ...typography.micro,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+  traceDetail: {
+    color: colors.textMuted,
+  },
+  agentStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  agentStatusDot: {
+    ...typography.micro,
+    color: colors.primary,
+  },
+  agentStatusText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    flex: 1,
   },
   emptyScroll: {
     flexGrow: 1,

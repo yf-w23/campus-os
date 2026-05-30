@@ -11,6 +11,7 @@ import {HomeworkDetailScreen} from '../../features/learning/HomeworkDetailScreen
 import {NotificationDetailScreen} from '../../features/learning/NotificationDetailScreen';
 import {FileDetailScreen} from '../../features/learning/FileDetailScreen';
 import {InAppViewerScreen} from '../../features/learning/InAppViewerScreen';
+import {ScheduleScreen} from '../../features/schedule/ScheduleScreen';
 import {CampusScreen} from '../../features/campus/CampusScreen';
 import {
   ClassroomScreen,
@@ -19,6 +20,11 @@ import {
   DormitoryScreen,
   ReservationScreen,
 } from '../../features/campus/subscreens';
+import {EleBalanceScreen} from '../../features/campus/EleBalanceScreen';
+import {EleRechargeScreen} from '../../features/campus/EleRechargeScreen';
+import {SportsScreen} from '../../features/campus/SportsScreen';
+import {SportsDetailScreen} from '../../features/campus/SportsDetailScreen';
+import {SportsBookScreen} from '../../features/campus/SportsBookScreen';
 import {LibraryNativeScreen} from '../../features/campus/LibraryNativeScreen';
 import {LibraryFloorScreen} from '../../features/campus/LibraryFloorScreen';
 import {LibrarySectionScreen} from '../../features/campus/LibrarySectionScreen';
@@ -32,11 +38,11 @@ import {colors} from '../theme';
 import {RootStackParamList, RootTabParamList} from './types';
 
 /**
- * 全局 Navigation 暗色主题 — 关掉 RN-Nav 默认白色 surface，
- * 进入/退出 Stack 不会闪一下白。
+ * 全局 Navigation 主题 — 用 app 浅色调色板覆盖 RN-Nav 默认色，
+ * 进入/退出 Stack 背景统一，不会闪屏。
  */
 const navTheme = {
-  dark: true,
+  dark: false,
   colors: {
     primary: colors.primary,
     background: colors.background,
@@ -112,6 +118,19 @@ function MainTabs() {
         }}
       />
       <Tab.Screen
+        name="Schedule"
+        component={ScheduleScreen}
+        options={{
+          tabBarIcon: ({focused}) => (
+            <TabIcon
+              focused={focused}
+              source={require('../../assets/tabs/schedule.png')}
+              label={t.tabs.schedule}
+            />
+          ),
+        }}
+      />
+      <Tab.Screen
         name="Campus"
         component={CampusScreen}
         options={{
@@ -182,7 +201,12 @@ export function AppNavigator() {
             <Stack.Screen name="CampusGrades" component={GradesScreen} />
             <Stack.Screen name="CampusPEtest" component={PEtestScreen} />
             <Stack.Screen name="CampusDormitory" component={DormitoryScreen} />
+            <Stack.Screen name="CampusEleBalance" component={EleBalanceScreen} />
+            <Stack.Screen name="CampusEleRecharge" component={EleRechargeScreen} />
             <Stack.Screen name="CampusReservation" component={ReservationScreen} />
+            <Stack.Screen name="CampusSports" component={SportsScreen} />
+            <Stack.Screen name="CampusSportsDetail" component={SportsDetailScreen} />
+            <Stack.Screen name="CampusSportsBook" component={SportsBookScreen} />
             <Stack.Screen name="CampusLibrary" component={LibraryNativeScreen} />
             <Stack.Screen
               name="CampusLibraryFloor"

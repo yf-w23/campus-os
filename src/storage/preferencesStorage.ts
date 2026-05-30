@@ -66,11 +66,11 @@ export async function setTrustDevice(enabled: boolean): Promise<void> {
   await AsyncStorage.setItem(KEYS.trustDevice, enabled ? 'true' : 'false');
 }
 
+// App 仅保留浅色模式：始终返回 'light'（保留函数签名以兼容历史调用）。
 export async function getColorScheme(): Promise<ColorScheme> {
-  const value = await AsyncStorage.getItem(KEYS.colorScheme);
-  return value === 'light' ? 'light' : 'dark';
+  return 'light';
 }
 
-export async function setColorScheme(scheme: ColorScheme): Promise<void> {
-  await AsyncStorage.setItem(KEYS.colorScheme, scheme);
+export async function setColorScheme(_scheme: ColorScheme): Promise<void> {
+  await AsyncStorage.setItem(KEYS.colorScheme, 'light');
 }

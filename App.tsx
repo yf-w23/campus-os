@@ -4,7 +4,12 @@ import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {ActivityIndicator, StatusBar, Text, View} from 'react-native';
 import {store, AppDispatch} from './src/state/store';
 import {setAuthenticated, setDemoMode} from './src/state/slices/authSlice';
-import {resetLearningDemo, resetLearningEmpty} from './src/state/slices/learningSlice';
+import {
+  hydrateLearningSchedule,
+  resetLearningDemo,
+  resetLearningEmpty,
+} from './src/state/slices/learningSlice';
+import {loadLearningScheduleCache} from './src/storage/learningScheduleStorage';
 import {
   setLocale,
   setTrustDevice,
@@ -12,6 +17,12 @@ import {
   setColorScheme,
 } from './src/state/slices/settingsSlice';
 import {hydrateConversations, setProvider} from './src/state/slices/aiSlice';
+import {hydratePersonalEvents} from './src/state/slices/scheduleSlice';
+import {
+  loadPersonalEvents,
+  savePersonalEvents,
+} from './src/storage/personalEventsStorage';
+import {AI_PRESETS} from './src/services/ai/agentService';
 import {
   loadConversations,
   saveConversations,
@@ -39,7 +50,7 @@ function Bootstrap() {
   const [NavComponent, setNavComponent] = useState<React.ComponentType | null>(
     null,
   );
-  const [scheme, setScheme] = useState<ColorScheme>('dark');
+  const [scheme, setScheme] = useState<ColorScheme>('light');
   const [bootError, setBootError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -69,14 +80,28 @@ function Bootstrap() {
         dispatch(setTrustDevice(trustDevice));
 
         if (providerConfig) {
-          dispatch(setProvider(providerConfig));
+          // 预置厂商（非自定义）始终用最新的 baseUrl/model 默认值，
+          // 避免旧版持久化的模型名（如 deepseek-chat）盖掉新默认。
+          const refreshed =
+            providerConfig.preset !== 'custom'
+              ? AI_PRESETS[providerConfig.preset]
+              : providerConfig;
+          dispatch(setProvider(refreshed));
           const apiKey = await loadAIApiKey(providerConfig.preset);
           dispatch(setAIApiKeyConfigured(Boolean(apiKey)));
         }
 
         // 载入持久化的 AI 对话历史
-        const persistedAI = await loadConversations();
+        const [persistedAI, persistedEvents] = await Promise.all([
+          loadConversations(),
+          loadPersonalEvents(),
+        ]);
         dispatch(hydrateConversations(persistedAI));
+        dispatch(hydratePersonalEvents(persistedEvents));
+        const cachedSchedule = await loadLearningScheduleCache();
+        if (cachedSchedule.length > 0) {
+          dispatch(hydrateLearningSchedule(cachedSchedule));
+        }
 
         // === 持久化登录恢复（对齐 THU Info）===
         // 上次登录过 + Keychain 仍有凭证 → 乐观进入主界面，后台静默续期会话。
@@ -157,6 +182,27 @@ function Bootstrap() {
 }
 
 function App(): React.JSX.Element {
+  // 防抖持久化个人日程
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let lastEvents = store.getState().schedule.personalEvents;
+    const unsubscribe = store.subscribe(() => {
+      const events = store.getState().schedule.personalEvents;
+      if (!store.getState().schedule.hydrated || events === lastEvents) {
+        return;
+      }
+      lastEvents = events;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        void savePersonalEvents(events);
+      }, 400);
+    });
+    return () => {
+      unsubscribe();
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+
   // 防抖持久化 AI 对话历史：会话数组引用一变就保存（包含流式追加，debounce 合并）。
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;

@@ -22,14 +22,16 @@ import {Badge, DetailHeader, EmptyState} from '../common/components/Ui';
 import {RootStackParamList} from '../../app/navigation/types';
 import {
   DateChoice,
+  formatLibRoomDateIso,
+  formatLibRoomDateYmd,
   getLibraryFloorList,
   getLibraryList,
-  getLibraryRoomKindList,
-  getLibraryRoomResourceList,
+  getLibraryRoomBookingInfoList,
+  getLibraryRoomBookingResourceList,
+  LibRoomInfo,
+  LibRoomRes,
   Library,
   LibraryFloor,
-  RoomKind,
-  RoomResource,
 } from '../../services/campus/library';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CampusLibrary'>;
@@ -42,14 +44,14 @@ export function LibraryNativeScreen({navigation}: Props) {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <DetailHeader
-        title="图书馆与研讨间"
+        title="图书馆与研读间"
         onBack={() => navigation.goBack()}
       />
       <View style={styles.tabs}>
         {(
           [
             ['seats', '座位查询'],
-            ['rooms', '研讨间'],
+            ['rooms', '研读间'],
           ] as [Tab, string][]
         ).map(([key, label]) => {
           const active = key === tab;
@@ -320,19 +322,20 @@ function FloorCard({
 function RoomsView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [kinds, setKinds] = useState<RoomKind[]>([]);
-  const [resources, setResources] = useState<RoomResource[]>([]);
+  const [kinds, setKinds] = useState<LibRoomInfo[]>([]);
+  const [selectedKind, setSelectedKind] = useState<number | null>(null);
+  const [resources, setResources] = useState<LibRoomRes[]>([]);
+  const [resLoading, setResLoading] = useState(false);
 
-  const load = useCallback(async () => {
+  const loadKinds = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [k, r] = await Promise.all([
-        getLibraryRoomKindList(),
-        getLibraryRoomResourceList().catch(() => [] as RoomResource[]),
-      ]);
-      setKinds(k);
-      setResources(r);
+      const list = await getLibraryRoomBookingInfoList();
+      setKinds(list);
+      if (list.length > 0) {
+        setSelectedKind(prev => prev ?? list[0].kindId);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : '加载失败');
     } finally {
@@ -341,104 +344,149 @@ function RoomsView() {
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    loadKinds();
+  }, [loadKinds]);
+
+  const loadResources = useCallback(
+    async (kindId: number, dateOffset: number) => {
+      setResLoading(true);
+      setError(null);
+      try {
+        const list = await getLibraryRoomBookingResourceList(
+          formatLibRoomDateYmd(dateOffset),
+          kindId,
+        );
+        setResources(list);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : '加载资源失败');
+        setResources([]);
+      } finally {
+        setResLoading(false);
+      }
+    },
+    [],
+  );
 
   if (loading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.hint}>正在激活研讨间会话…</Text>
+        <Text style={styles.hint}>正在激活研读间会话…</Text>
       </View>
     );
   }
-  if (error) {
+  if (error && kinds.length === 0) {
     return (
       <View style={styles.center}>
         <Text style={styles.errorTitle}>加载失败</Text>
         <Text style={styles.errorMsg}>{error}</Text>
-        <Pressable style={styles.retry} onPress={load}>
+        <Pressable style={styles.retry} onPress={loadKinds}>
           <Text style={styles.retryText}>重试</Text>
         </Pressable>
       </View>
     );
   }
 
+  const validDateNum = 5;
+
   return (
     <ScrollView contentContainerStyle={{paddingBottom: spacing.xxl}}>
-      <Text style={styles.groupTitle}>研讨间类型</Text>
+      <Text style={styles.groupTitle}>研读间类型</Text>
       {kinds.length === 0 ? (
         <View style={{paddingHorizontal: spacing.lg}}>
-          <EmptyState title="无研讨间类型" description="接口未返回数据" />
+          <EmptyState title="无研读间类型" description="接口未返回数据" />
         </View>
       ) : (
-        <View style={{paddingHorizontal: spacing.lg}}>
-          {kinds.map(k => {
-            const free = Math.max(0, k.totalCount - k.resvCount);
-            const ratio = k.totalCount > 0 ? k.resvCount / k.totalCount : 0;
-            const barColor =
-              ratio < 0.7 ? colors.success : ratio < 0.9 ? colors.warning : colors.error;
+        <View style={{paddingHorizontal: spacing.lg, gap: spacing.sm}}>
+          {kinds.map(lib => {
+            const expanded = selectedKind === lib.kindId;
             return (
-              <View key={k.id} style={styles.sectionCard}>
-                <View style={styles.sectionTop}>
-                  <View style={{flex: 1}}>
-                    <Text style={styles.sectionName}>{k.kindName}</Text>
-                    <Text style={styles.sectionStat}>
-                      可约 {free} / 共 {k.totalCount}
-                    </Text>
-                  </View>
-                  <View style={styles.bigStat}>
-                    <Text style={[styles.bigStatNum, {color: barColor}]}>
-                      {free}
-                    </Text>
-                    <Text style={styles.bigStatLabel}>可约</Text>
-                  </View>
-                </View>
-                <View style={styles.barTrack}>
-                  <View
-                    style={[
-                      styles.barFill,
-                      {
-                        width: `${Math.min(100, Math.round(ratio * 100))}%`,
-                        backgroundColor: barColor,
-                      },
-                    ]}
-                  />
-                </View>
+              <View key={lib.kindId} style={styles.sectionCard}>
+                <Pressable
+                  onPress={() =>
+                    setSelectedKind(expanded ? null : lib.kindId)
+                  }>
+                  <Text style={styles.sectionName}>{lib.kindName}</Text>
+                  <Text style={styles.sectionStat}>
+                    {lib.rooms.length} 个房间 · 点选查看近 {validDateNum} 天
+                  </Text>
+                </Pressable>
+                {expanded
+                  ? Array.from({length: validDateNum}, (_, k) => k).map(
+                      dateOffset => (
+                        <Pressable
+                          key={`${lib.kindId}-${dateOffset}`}
+                          style={styles.libDateRow}
+                          onPress={() => {
+                            setSelectedKind(lib.kindId);
+                            void loadResources(lib.kindId, dateOffset);
+                          }}>
+                          <Text style={styles.libDateRowText}>
+                            {formatLibRoomDateIso(dateOffset)}
+                          </Text>
+                          <Text style={styles.libDateRowChev}>›</Text>
+                        </Pressable>
+                      ),
+                    )
+                  : null}
               </View>
             );
           })}
         </View>
       )}
 
-      <Text style={[styles.groupTitle, {marginTop: spacing.lg}]}>
-        全部研讨间（{resources.length}）
-      </Text>
-      <View style={{paddingHorizontal: spacing.lg}}>
-        {resources.length === 0 ? (
-          <View style={styles.inlineError}>
-            <Text style={styles.errorMsg}>未获取到研讨间资源列表</Text>
+      {resLoading ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      ) : null}
+
+      {resources.length > 0 ? (
+        <>
+          <Text style={[styles.groupTitle, {marginTop: spacing.lg}]}>
+            可预约资源（{resources.length}）
+          </Text>
+          <View style={{paddingHorizontal: spacing.lg}}>
+            {resources.map(r => {
+              const closed = r.kindName.includes('暂未开放');
+              return (
+                <View key={`${r.devId}-${r.roomId}`} style={styles.resourceCard}>
+                  <View style={{flex: 1}}>
+                    <Text
+                      style={[
+                        styles.sectionName,
+                        closed && {textDecorationLine: 'line-through', opacity: 0.5},
+                      ]}>
+                      {r.roomName}
+                      {r.maxUser > 1 ? ` (${r.minUser}~${r.maxUser}人)` : ''}
+                    </Text>
+                    <Text style={styles.sectionStat}>{r.kindName}</Text>
+                    {r.openStart && r.openEnd ? (
+                      <Text style={styles.sectionStat}>
+                        开放 {r.openStart}–{r.openEnd}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Badge
+                    label={closed ? '未开放' : '可浏览'}
+                    tone={closed ? 'warning' : 'default'}
+                  />
+                </View>
+              );
+            })}
           </View>
-        ) : (
-          resources.map(r => (
-            <View key={r.resourceId} style={styles.resourceCard}>
-              <View style={{flex: 1}}>
-                <Text style={styles.sectionName}>{r.resourceName}</Text>
-                <Text style={styles.sectionStat}>
-                  {r.openStart}–{r.openEnd} · {r.minUser}-{r.maxUser} 人
-                </Text>
-              </View>
-              <Badge
-                label={r.available ? '可约' : '暂停'}
-                tone={r.available ? 'default' : 'warning'}
-              />
-            </View>
-          ))
-        )}
-      </View>
+        </>
+      ) : null}
+
+      {error && kinds.length > 0 ? (
+        <Text style={[styles.errorMsg, {paddingHorizontal: spacing.lg}]}>
+          {error}
+        </Text>
+      ) : null}
 
       <Text style={styles.footer}>
-        当前只读浏览：可看类型、剩余、资源详情。下单预约请在清华师生大厅小程序里完成。
+        研读间预约对照 THU Info「研读间预约」：先 cab 登录再拉类型与资源。
+        完整下单（选时段、邀请成员）请在清华师生大厅小程序完成。
       </Text>
     </ScrollView>
   );
@@ -595,6 +643,18 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
   },
   retryText: {...typography.label, color: colors.textInvert},
+  libDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    marginTop: spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.divider,
+  },
+  libDateRowText: {...typography.body, color: colors.primary},
+  libDateRowChev: {fontSize: 20, color: colors.textMuted},
   footer: {
     ...typography.caption,
     color: colors.textMuted,

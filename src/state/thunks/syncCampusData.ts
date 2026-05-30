@@ -9,6 +9,11 @@ import {
   setLearningError,
   setLearningSnapshot,
 } from '../slices/learningSlice';
+import {clearScheduleError, setCampusSchedule} from '../slices/scheduleSlice';
+import {
+  loadLearningScheduleCache,
+  saveLearningScheduleCache,
+} from '../../storage/learningScheduleStorage';
 import {AppDispatch, RootState} from '../store';
 
 let activeSync: Promise<void> | null = null;
@@ -35,17 +40,45 @@ export const syncCampusData = createAsyncThunk<
   dispatch(beginLearningSync());
 
   const run = async () => {
-    const snapshot = await fetchLearningCoreSnapshot();
+    const {learning} = getState();
+    const prevSchedule = learning.snapshot?.schedule ?? [];
+    const cachedSchedule = await loadLearningScheduleCache();
+
+    const {snapshot, schedulePack} = await fetchLearningCoreSnapshot();
+
+    let schedule = snapshot.schedule;
+    if (schedule.length === 0) {
+      schedule =
+        prevSchedule.length > 0
+          ? prevSchedule
+          : cachedSchedule.length > 0
+            ? cachedSchedule
+            : [];
+    }
+
+    const merged: typeof snapshot = {...snapshot, schedule};
 
     if (
-      snapshot.courses.length === 0 &&
-      snapshot.schedule.length === 0 &&
-      snapshot.homework.length === 0
+      merged.courses.length === 0 &&
+      merged.schedule.length === 0 &&
+      merged.homework.length === 0
     ) {
       throw new Error('未拉取到课程、课表或作业，请确认 WebVPN 已登录且当前学期有课');
     }
 
-    dispatch(setLearningSnapshot(snapshot));
+    dispatch(setLearningSnapshot(merged));
+    if (schedulePack) {
+      dispatch(
+        setCampusSchedule({
+          calendar: schedulePack.calendar,
+          baseSchedule: schedulePack.schedules,
+        }),
+      );
+    }
+    if (merged.schedule.length > 0) {
+      dispatch(clearScheduleError());
+      await saveLearningScheduleCache(merged.schedule);
+    }
 
     fetchLearningExtras(snapshot.courses)
       .then(extras => dispatch(mergeLearningExtras(extras)))

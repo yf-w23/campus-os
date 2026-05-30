@@ -51,8 +51,8 @@ const entries: Entry[] = [
   },
   {
     key: 'CampusReservation',
-    title: '场馆预约',
-    subtitle: '图书馆、研讨间',
+    title: '图书馆预约',
+    subtitle: '座位查询与预约、研读间',
     icon: require('../../assets/campus/reservation.png'),
   },
 ];
@@ -66,7 +66,7 @@ export function CampusScreen({navigation}: Props) {
         <ScreenHeader
           eyebrow="校园"
           title="清华校园服务"
-          subtitle="教室 · 成绩 · 体测 · 宿舍 · 场馆"
+          subtitle="教室 · 成绩 · 体测 · 宿舍 · 图书馆"
         />
 
         <View style={styles.list}>
