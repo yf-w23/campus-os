@@ -1,6 +1,12 @@
 import {AIProviderConfig, AIProviderPreset, AgentContext, ChatMessage} from '../../domain/agent';
+import {
+  ActionExecutionStatus,
+  ActionPreview,
+  ConfirmationStatus,
+  VerificationResult,
+} from '../../domain/actions';
 import {LearningSnapshot} from '../../domain/learning';
-import {AgentTool, getToolByName, toolSpecs} from './tools';
+import type {AgentTool} from './tools';
 
 export const AI_PRESETS: Record<
   AIProviderPreset,
@@ -52,9 +58,13 @@ function weekdayCN(): string {
 
 /** 把课表日期字段归一为 YYYY-MM-DD，用于和今天比较 */
 function normalizeDate(s: string | undefined | null): string {
-  if (!s) return '';
+  if (!s) {
+    return '';
+  }
   const str = String(s).trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+    return str.slice(0, 10);
+  }
   if (/^\d{8}$/.test(str)) {
     return `${str.slice(0, 4)}-${str.slice(4, 6)}-${str.slice(6, 8)}`;
   }
@@ -117,14 +127,20 @@ export function buildAgentContext(
 
 export function buildSystemPrompt(context: AgentContext): string {
   const lines: string[] = [
-    '你是 Campus OS 的校园智能体（agent），不只是问答助手——你可以通过“工具”实时查询校园数据，并在用户授权下替用户完成操作（如预约图书馆座位、电费充值）。',
+    '你是 Campus OS 的校园智能体（agent），不只是问答助手——你可以通过“工具”实时查询校园数据，并在用户授权下替用户完成低风险、可撤销操作。',
     `今天是 ${context.todayDate}。当用户问“今天/明天/本周”等相对时间时，一律以这个日期为准，不要臆造日期。`,
     '',
     '## 工具使用原则',
-    '- 需要实时/精确数据（成绩、电费余额、图书馆空位、作业详情）时，调用相应工具获取，不要凭注入摘要臆测。',
-    '- 预约座位、电费充值、添加/删除个人备忘日程属于写操作，会触发用户二次确认。',
+    '- 需要实时/精确数据（成绩、电费余额、校园卡/校园网余额、图书馆空位、体育预约、作业详情）时，调用相应工具获取，不要凭注入摘要臆测。',
+    '- 预约/取消图书馆座位、预约/取消研读间、注销校园网设备、添加/删除个人备忘日程属于写操作，会触发 dry-run、用户二次确认和执行后验证。',
+    '- 选课、支付、校园卡挂失/充值/改密码、教学评价提交、邮件发送等高风险事务当前不自动执行；只能给出方案或提醒用户到官方页面手动处理。',
     '- 问「这周/某天有什么安排」时优先用 get_week_schedule；仅查用户自建备忘用 list_personal_events。不能删除或修改教务课表，只能增删个人备忘。',
+    '- 问空教室、自习地点、某教学楼空闲情况时，先用 list_classroom_buildings 或 find_available_classrooms 获取真实教室状态。',
     '- 预约图书馆座位按"列馆→列楼层→列分区→找座位→预约"的顺序逐步推进，不要反复试探。',
+    '- 用户问图书馆当前预约记录或取消座位预约时，先用 list_library_booking_records 获取真实记录，再用其中 delId 调 cancel_library_seat_booking。',
+    '- 用户问研读间时，先用 list_library_room_types / find_library_rooms 查可用资源；预约前必须有明确日期、开始/结束时间和 devId/kindId。',
+    '- 用户问校园网余额/在线设备时使用 get_network_balance / list_network_devices；注销设备前只使用 key，工具会自行查 mac。',
+    '- 用户问校园卡时只查询余额和流水，不要承诺充值、挂失或修改密码。',
     '- 预约座位前若用户没指定地点，优先使用其常用图书馆（见下方记忆）；仍不确定时先询问。',
     '- 用户表达明确长期偏好（常去哪、默认充值多少、关注哪些课）时，用 remember_preference 记住。',
     '- 操作完成后用简洁中文向用户复述结果（成功/失败/下一步）。',
@@ -281,9 +297,17 @@ export interface AgentCallbacks {
   /** 工具开始执行（用于过程可视化）*/
   onToolStart?: (tool: AgentTool, args: unknown) => void;
   /** 工具执行结束 */
-  onToolEnd?: (tool: AgentTool, ok: boolean, detail?: string) => void;
+  onToolEnd?: (
+    tool: AgentTool,
+    status: ActionExecutionStatus,
+    detail?: string,
+  ) => void;
   /** 写操作二次确认；返回 true 才执行 */
-  requestConfirmation?: (tool: AgentTool, args: unknown) => Promise<boolean>;
+  requestConfirmation?: (
+    tool: AgentTool,
+    args: unknown,
+    preview?: ActionPreview,
+  ) => Promise<boolean>;
 }
 
 interface OpenAIToolCall {
@@ -320,12 +344,60 @@ async function postChatCompletion(
 function summarizeToolResult(result: unknown): string | undefined {
   if (result && typeof result === 'object') {
     const r = result as Record<string, unknown>;
-    if (typeof r.message === 'string') return r.message;
-    if (r.error) return String(r.error);
-    if (r.ok === true) return '成功';
-    if (r.ok === false) return '失败';
+    if (typeof r.message === 'string') {
+      return r.message;
+    }
+    if (r.error) {
+      return String(r.error);
+    }
+    if (r.ok === true) {
+      return '成功';
+    }
+    if (r.ok === false) {
+      return '失败';
+    }
   }
   return undefined;
+}
+
+function isToolResultFailure(result: unknown): boolean {
+  if (result && typeof result === 'object') {
+    const r = result as Record<string, unknown>;
+    return Boolean(r.error) || r.ok === false;
+  }
+  return false;
+}
+
+async function auditToolCall(input: {
+  tool: AgentTool;
+  args: unknown;
+  preview?: ActionPreview;
+  confirmation: ConfirmationStatus;
+  status: ActionExecutionStatus;
+  verification?: VerificationResult;
+  result?: unknown;
+  errorMessage?: string;
+}): Promise<void> {
+  try {
+    const {appendActionAuditRecord} = require('../../storage/actionAuditStorage') as typeof import(
+      '../../storage/actionAuditStorage'
+    );
+    await appendActionAuditRecord({
+      toolName: input.tool.name,
+      toolTitle: input.tool.title,
+      risk: input.tool.risk,
+      permission: input.tool.permission,
+      params: input.args,
+      preview: input.preview,
+      confirmation: input.confirmation,
+      status: input.status,
+      verification: input.verification,
+      resultSummary: summarizeToolResult(input.result),
+      errorMessage: input.errorMessage,
+    });
+  } catch {
+    // Audit persistence must never break the user-facing agent flow.
+  }
 }
 
 /**
@@ -341,6 +413,7 @@ export async function runAgent(
   context: AgentContext,
   callbacks: AgentCallbacks,
 ): Promise<string> {
+  const {getToolByName, toolSpecs} = require('./tools') as typeof import('./tools');
   const convo: any[] = [
     {role: 'system', content: buildSystemPrompt(context)},
     ...messages.map(m => ({role: m.role, content: m.content})),
@@ -385,27 +458,83 @@ export async function runAgent(
           args = {};
         }
 
+        callbacks.onToolStart?.(tool, args);
+
         let cancelled = false;
-        if (tool.requiresConfirmation && callbacks.requestConfirmation) {
-          const ok = await callbacks.requestConfirmation(tool, args);
-          if (!ok) {
+        let confirmation: ConfirmationStatus = tool.requiresConfirmation
+          ? 'unavailable'
+          : 'not_required';
+        let status: ActionExecutionStatus = 'success';
+        let errorMessage: string | undefined;
+        let preview: ActionPreview | undefined;
+        let verification: VerificationResult | undefined;
+
+        if (tool.requiresConfirmation) {
+          if (tool.dryRun) {
+            try {
+              preview = await tool.dryRun(args);
+            } catch (e) {
+              cancelled = true;
+              status = 'error';
+              errorMessage = e instanceof Error ? e.message : String(e);
+              result = {error: errorMessage};
+              callbacks.onToolEnd?.(tool, 'error', errorMessage);
+            }
+          }
+          const requestConfirmation = callbacks.requestConfirmation;
+          if (!cancelled && !requestConfirmation) {
             cancelled = true;
-            result = {ok: false, cancelled: true, message: '用户取消了该操作'};
-            callbacks.onToolEnd?.(tool, false, '已取消');
+            confirmation = 'unavailable';
+            status = 'cancelled';
+            result = {
+              ok: false,
+              cancelled: true,
+              message: '缺少确认通道，已阻止执行',
+            };
+            callbacks.onToolEnd?.(tool, 'cancelled', '缺少确认通道');
+          } else if (!cancelled) {
+            const ok = await requestConfirmation!(tool, args, preview);
+            confirmation = ok ? 'approved' : 'denied';
+            if (!ok) {
+              cancelled = true;
+              status = 'cancelled';
+              result = {ok: false, cancelled: true, message: '用户取消了该操作'};
+              callbacks.onToolEnd?.(tool, 'cancelled', '已取消');
+            }
           }
         }
 
         if (!cancelled) {
-          callbacks.onToolStart?.(tool, args);
           try {
             result = await tool.run(args);
-            callbacks.onToolEnd?.(tool, true, summarizeToolResult(result));
+            status = isToolResultFailure(result) ? 'error' : 'success';
+            if (tool.verify && status === 'success') {
+              verification = await tool.verify(args, result);
+              if (!verification.ok) {
+                status = 'error';
+                errorMessage = verification.message ?? '执行后验证失败';
+              }
+            }
+            callbacks.onToolEnd?.(tool, status, summarizeToolResult(result));
           } catch (e) {
             const detail = e instanceof Error ? e.message : String(e);
             result = {error: detail};
-            callbacks.onToolEnd?.(tool, false, detail);
+            status = 'error';
+            errorMessage = detail;
+            callbacks.onToolEnd?.(tool, 'error', detail);
           }
         }
+
+        await auditToolCall({
+          tool,
+          args,
+          preview,
+          confirmation,
+          status,
+          verification,
+          result,
+          errorMessage,
+        });
       }
 
       convo.push({

@@ -100,7 +100,9 @@ export class TsinghuaAuthService {
    * 需要会话恢复时先从 Keychain 拿回来。
    */
   async hydrateCredentials(): Promise<CampusCredentials | null> {
-    if (this.cachedCredentials) return this.cachedCredentials;
+    if (this.cachedCredentials) {
+      return this.cachedCredentials;
+    }
     try {
       const saved = await loadCredentials();
       if (saved && saved.password) {
@@ -412,7 +414,7 @@ export class TsinghuaAuthService {
       const verified = await this.verifyInfoSession(credentials.studentId);
       if (!verified) {
         return this.errorResult(
-          `info portal 会话验证失败：USER_DATA 未返回正确的 ryh`,
+          'info portal 会话验证失败：USER_DATA 未返回正确的 ryh',
         );
       }
       this.addTrace('verified');
@@ -548,6 +550,59 @@ export class TsinghuaAuthService {
     return html;
   }
 
+  /**
+   * 校园卡系统使用 thu-info-lib 里的 `roam(helper, "card", payload)`：
+   * 登录 ID 后直接访问 callback，不再包一层 WebVPN lbredirect。校园卡的
+   * card.tsinghua.edu.cn cookie 需要这样才能落到正确域名。
+   */
+  async roamCardPolicy(
+    credentials: CampusCredentials,
+    payload: string,
+  ): Promise<string> {
+    let response = '';
+    for (let i = 0; i < 2; i += 1) {
+      const formHtml = await webvpnTransport.fetchText(
+        `${ID_BASE_URL}${payload}`,
+      );
+      const publicKey = extractSm2PublicKey(formHtml);
+      if (!publicKey) {
+        throw new Error(
+          `roamCard(${payload}): missing sm2publicKey (form len=${formHtml.length})`,
+        );
+      }
+      const encryptedPassword = encryptPassword(credentials.password, publicKey);
+      response = await webvpnTransport.fetchText(ID_LOGIN_URL, {
+        body: {
+          i_user: credentials.studentId,
+          i_pass: encryptedPassword,
+          fingerPrint: credentials.fingerprint,
+          fingerGenPrint: '',
+          fingerGenPrint3: '',
+          i_captcha: '',
+        },
+      });
+      if (response.includes(TWO_FACTOR_MARK)) {
+        response = await this.performTwoFactor(
+          credentials,
+          '校园卡漫游需要再次二次认证，请重新验证',
+        );
+      }
+      if (response.includes(LOGIN_SUCCESS_MARK)) {
+        break;
+      }
+    }
+    if (!response.includes(LOGIN_SUCCESS_MARK)) {
+      throw new Error(
+        `roamCard(${payload}): login failed (resp head: ${response.slice(0, 60)})`,
+      );
+    }
+    const callbackHref = extractFirstAnchorHref(response);
+    if (!callbackHref) {
+      throw new Error(`roamCard(${payload}): no callback href`);
+    }
+    return webvpnTransport.fetchText(callbackHref);
+  }
+
   // ============================================================
   // 激活 learn 会话（直连 learn.tsinghua.edu.cn）
   // ============================================================
@@ -621,7 +676,9 @@ export class TsinghuaAuthService {
       },
     );
     let ticket = await ticketResponse.text();
-    if (ticket.startsWith('"')) ticket = ticket.substring(1, ticket.length - 1);
+    if (ticket.startsWith('"')) {
+      ticket = ticket.substring(1, ticket.length - 1);
+    }
     if (!ticket) {
       throw new Error('无法获取 zhjw ticket');
     }
@@ -669,7 +726,9 @@ export class TsinghuaAuthService {
     }
 
     const creds = await this.hydrateCredentials();
-    if (!creds) throw firstError;
+    if (!creds) {
+      throw firstError;
+    }
 
     const reroam =
       onReroam ?? (async () => this.roamIdPolicy(creds, INFO_PORTAL_YYFWID));
@@ -840,7 +899,7 @@ export function wrapWebVPNUrl(urlIn: string): string {
   if (urlIn.includes('oauth.tsinghua.edu.cn')) {
     return urlIn;
   }
-  const m = /^(https?):\/\/([^\/:?#]+)(?::(\d+))?(\/[^?#]*)?(\?[^#]*)?(#.*)?$/.exec(
+  const m = /^(https?):\/\/([^/:?#]+)(?::(\d+))?(\/[^?#]*)?(\?[^#]*)?(#.*)?$/.exec(
     urlIn,
   );
   if (!m) {

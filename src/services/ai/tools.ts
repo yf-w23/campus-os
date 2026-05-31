@@ -10,23 +10,47 @@
  *   - write 工具（requiresConfirmation true）：执行前必须经 UI 二次确认。
  *   - run() 返回的对象会被 JSON.stringify 后作为 tool 结果回灌给模型，注意控制体积。
  */
-import {Linking} from 'react-native';
 import {store} from '../../state/store';
-import {fetchGradeReport} from '../campus/grades';
 import {
-  buildAlipayUrl,
-  getEleRechargePayCode,
-  getEleRemainder,
-  getEleRoomInfo,
-} from '../campus/electricity';
+  ClassroomStatus,
+  PERIODS_PER_DAY,
+  fetchClassroomList,
+  fetchClassroomState,
+} from '../campus/classroom';
+import {fetchGradeReport} from '../campus/grades';
+import {getEleRemainder, getEleRoomInfo} from '../campus/electricity';
 import {
   DateChoice,
+  bookLibraryRoom as bookLibraryRoomService,
   bookLibrarySeat,
+  cancelLibraryBooking,
+  cancelLibraryRoomBooking,
+  fuzzySearchLibraryId,
+  getLibraryBookingRecords,
   getLibraryFloorList,
+  getLibraryRoomBookingInfoList,
+  getLibraryRoomBookingRecord,
+  getLibraryRoomBookingResourceList,
   getLibrarySeatList,
   getLibrarySectionList,
   getLibraryList,
 } from '../campus/library';
+import {
+  getCampusCardInfo,
+  getCampusCardTransactions,
+} from '../campus/campusCard';
+import {
+  getNetworkAccountInfo,
+  getNetworkBalance,
+  getOnlineNetworkDevices,
+  logoutNetworkDevice,
+} from '../campus/network';
+import {
+  getSportsReservationRecords,
+  getSportsResources,
+  sportsDateString,
+  sportsIdInfoList,
+} from '../campus/sports';
 import {fetchHomeworkDetail} from '../campus/homeworkDetail';
 import {patchAIMemory} from '../../storage/aiMemoryStorage';
 import {
@@ -36,18 +60,33 @@ import {
   listPersonalEventsInRange,
 } from '../schedule/personalEvents';
 import {normalizeDateString, todayLocalISO, weekDatesContaining} from '../../utils/weekDates';
+import {
+  ActionPreview,
+  ConfirmationSpec,
+  ToolRisk,
+  UndoResult,
+  VerificationResult,
+} from '../../domain/actions';
 
 export interface AgentTool {
   name: string;
+  title: string;
   description: string;
   /** JSON Schema（OpenAI tools 格式的 parameters）*/
   parameters: Record<string, unknown>;
+  /** Risk class for audit, confirmation, and future policy checks. */
+  risk: ToolRisk;
+  /** Permission key for future policy UI and per-tool consent. */
+  permission: string;
   /** 写操作：执行前需 UI 二次确认 */
   requiresConfirmation?: boolean;
+  dryRun?: (args: any) => Promise<ActionPreview>;
+  verify?: (args: any, result: unknown) => Promise<VerificationResult>;
+  undo?: (args: any, result: unknown) => Promise<UndoResult>;
   /** 过程状态行文案 */
   summarize?: (args: any) => string;
   /** 确认弹窗文案（写操作）*/
-  confirmPrompt?: (args: any) => {title: string; message: string};
+  confirmPrompt?: (args: any, preview?: ActionPreview) => ConfirmationSpec;
   run: (args: any) => Promise<unknown>;
 }
 
@@ -78,15 +117,89 @@ const seatStatusLabel: Record<number, string> = {
   7: '已占用',
 };
 
+function currentClassroomDayIndex(): number {
+  const day = new Date().getDay();
+  return day === 0 ? 7 : day;
+}
+
+function maskIdentifier(value?: string | number): string | undefined {
+  const raw = value == null ? '' : String(value);
+  if (!raw) {
+    return undefined;
+  }
+  if (raw.length <= 4) {
+    return '****';
+  }
+  return `${raw.slice(0, 2)}***${raw.slice(-2)}`;
+}
+
+function isoDateForOffset(offsetDays: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${month}-${day}`;
+}
+
+function normalizeDateArg(value: unknown, fallbackOffset = 0): string {
+  if (value === 'today' || value === '今天' || value == null || value === '') {
+    return isoDateForOffset(fallbackOffset);
+  }
+  if (value === 'tomorrow' || value === '明天') {
+    return isoDateForOffset(1);
+  }
+  const raw = String(value).trim();
+  const normalized = normalizeDateString(raw);
+  return normalized || isoDateForOffset(fallbackOffset);
+}
+
+function ymdFromIso(date: string): string {
+  return date.replace(/-/g, '');
+}
+
+function toRoomTimestamp(date: string, time: string): string {
+  const cleanTime = String(time).trim();
+  const match = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(cleanTime);
+  if (!match) {
+    throw new Error('研读间时间必须是 HH:mm，例如 14:00');
+  }
+  const hour = match[1].padStart(2, '0');
+  const minute = match[2];
+  if (Number(minute) % 5 !== 0) {
+    throw new Error('研读间预约分钟必须是 5 的倍数');
+  }
+  return `${date} ${hour}:${minute}:00`;
+}
+
+function parseLocalTime(date: string, time: string): Date {
+  return new Date(`${date}T${time.slice(0, 5)}:00`);
+}
+
+function rangesOverlap(
+  leftStart: Date,
+  leftEnd: Date,
+  rightStart: Date,
+  rightEnd: Date,
+): boolean {
+  return leftStart < rightEnd && rightStart < leftEnd;
+}
+
+function sameMinute(left: Date, right: Date): boolean {
+  return Math.abs(left.getTime() - right.getTime()) < 60 * 1000;
+}
+
 // ============================================================
 // 读工具
 // ============================================================
 
 const getTodayTool: AgentTool = {
   name: 'get_today_overview',
+  title: '今日概览',
   description:
     '获取今天的日期、星期，以及今天的课程安排和临近的待办作业（DDL）。当用户问"今天/最近有什么安排/作业"时使用。',
   parameters: {type: 'object', properties: {}},
+  risk: 'read',
+  permission: 'learning.overview.read',
   summarize: () => '读取今日概览',
   run: async () => {
     const snapshot = getSnapshot();
@@ -106,6 +219,7 @@ const getTodayTool: AgentTool = {
 
 const listHomeworkTool: AgentTool = {
   name: 'list_homework',
+  title: '作业列表',
   description:
     '列出作业。可按状态筛选：pending=未提交，submitted=已提交未批改，graded=已批改，all=全部。',
   parameters: {
@@ -118,14 +232,20 @@ const listHomeworkTool: AgentTool = {
       },
     },
   },
+  risk: 'read',
+  permission: 'learning.homework.read',
   summarize: () => '查询作业列表',
   run: async (args: {status?: string}) => {
     const snapshot = getSnapshot();
     const status = args?.status ?? 'pending';
     let list = snapshot?.homework ?? [];
-    if (status === 'pending') list = list.filter(h => !h.submitted);
-    else if (status === 'submitted') list = list.filter(h => h.submitted && !h.graded);
-    else if (status === 'graded') list = list.filter(h => h.graded);
+    if (status === 'pending') {
+      list = list.filter(h => !h.submitted);
+    } else if (status === 'submitted') {
+      list = list.filter(h => h.submitted && !h.graded);
+    } else if (status === 'graded') {
+      list = list.filter(h => h.graded);
+    }
     return {
       count: list.length,
       homework: list.slice(0, 30).map(h => ({
@@ -142,6 +262,7 @@ const listHomeworkTool: AgentTool = {
 
 const getHomeworkDetailTool: AgentTool = {
   name: 'get_homework_detail',
+  title: '作业详情',
   description:
     '获取某条作业的完整详情（作业说明、附件、提交内容、批阅结果）。通过作业标题关键词或 list_homework 返回的 id 定位。',
   parameters: {
@@ -151,6 +272,8 @@ const getHomeworkDetailTool: AgentTool = {
     },
     required: ['titleOrId'],
   },
+  risk: 'read',
+  permission: 'learning.homework.read',
   summarize: (a: {titleOrId?: string}) => `读取作业详情：${a?.titleOrId ?? ''}`,
   run: async (args: {titleOrId: string}) => {
     requireRealSession();
@@ -181,8 +304,11 @@ const getHomeworkDetailTool: AgentTool = {
 
 const getGradesTool: AgentTool = {
   name: 'get_grades',
+  title: '成绩查询',
   description: '查询本人成绩单与学分绩（GPA）。返回各门课成绩与总体 GPA。',
   parameters: {type: 'object', properties: {}},
+  risk: 'read',
+  permission: 'campus.grades.read',
   summarize: () => '查询成绩与 GPA',
   run: async () => {
     requireRealSession();
@@ -203,8 +329,11 @@ const getGradesTool: AgentTool = {
 
 const getElectricityTool: AgentTool = {
   name: 'get_electricity_balance',
+  title: '电费余额',
   description: '查询宿舍当前电费剩余电量、更新时间与房间信息。',
   parameters: {type: 'object', properties: {}},
+  risk: 'read',
+  permission: 'campus.electricity.read',
   summarize: () => '查询电费余额',
   run: async () => {
     requireRealSession();
@@ -223,10 +352,374 @@ const getElectricityTool: AgentTool = {
   },
 };
 
+const getCampusCardBalanceTool: AgentTool = {
+  name: 'get_campus_card_balance',
+  title: '校园卡余额',
+  description:
+    '查询校园卡余额、卡状态和最近交易时间。只读，不执行充值、挂失或密码类动作。',
+  parameters: {type: 'object', properties: {}},
+  risk: 'read',
+  permission: 'campus.card.read',
+  summarize: () => '查询校园卡余额',
+  run: async () => {
+    requireRealSession();
+    const info = await getCampusCardInfo();
+    return {
+      balance: info.balance,
+      unit: '元',
+      cardStatus: info.cardStatus,
+      departmentName: info.departmentName,
+      userName: info.userName,
+      cardId: maskIdentifier(info.cardId),
+      lastTransactionTimestamp: info.lastTransactionTimestamp,
+    };
+  },
+};
+
+const getCampusCardTransactionsTool: AgentTool = {
+  name: 'get_campus_card_transactions',
+  title: '校园卡流水',
+  description:
+    '查询校园卡近期流水。start/end 为 YYYY-MM-DD；type 可选 any/consumption/recharge/subsidy。结果会限制条数。',
+  parameters: {
+    type: 'object',
+    properties: {
+      start: {type: 'string', description: '起始日期 YYYY-MM-DD，默认 7 天前'},
+      end: {type: 'string', description: '结束日期 YYYY-MM-DD，默认今天'},
+      type: {
+        type: 'string',
+        enum: ['any', 'consumption', 'recharge', 'subsidy'],
+        description: '流水类型，默认 any',
+      },
+    },
+  },
+  risk: 'read',
+  permission: 'campus.card.transactions.read',
+  summarize: () => '查询校园卡流水',
+  run: async (args: {start?: string; end?: string; type?: string}) => {
+    requireRealSession();
+    const typeMap: Record<string, -1 | 1 | 2 | 3> = {
+      any: -1,
+      consumption: 1,
+      recharge: 2,
+      subsidy: 3,
+    };
+    const end = normalizeDateArg(args.end, 0);
+    const start = args.start ? normalizeDateArg(args.start) : isoDateForOffset(-7);
+    const rows = await getCampusCardTransactions({
+      start,
+      end,
+      type: typeMap[args.type ?? 'any'] ?? -1,
+    });
+    return {
+      start,
+      end,
+      count: rows.length,
+      transactions: rows.slice(0, 30).map(item => ({
+        summary: item.summary,
+        timestamp: item.timestamp,
+        amount: item.amount,
+        balance: item.balance,
+        merchant: item.name,
+        address: item.address,
+        txName: item.txName,
+      })),
+    };
+  },
+};
+
+const getNetworkBalanceTool: AgentTool = {
+  name: 'get_network_balance',
+  title: '校园网余额',
+  description: '查询校园网套餐、已用流量/时长、账户余额和结算日期。',
+  parameters: {type: 'object', properties: {}},
+  risk: 'read',
+  permission: 'campus.network.read',
+  summarize: () => '查询校园网余额',
+  run: async () => {
+    requireRealSession();
+    return getNetworkBalance();
+  },
+};
+
+const getNetworkAccountInfoTool: AgentTool = {
+  name: 'get_network_account_info',
+  title: '校园网账号信息',
+  description:
+    '查询校园网账号状态、用户组、允许在线设备数等信息。手机号和邮箱会脱敏。',
+  parameters: {type: 'object', properties: {}},
+  risk: 'read',
+  permission: 'campus.network.read',
+  summarize: () => '查询校园网账号信息',
+  run: async () => {
+    requireRealSession();
+    const info = await getNetworkAccountInfo();
+    return {
+      username: maskIdentifier(info.username),
+      realName: info.realName,
+      status: info.status,
+      userGroup: info.userGroup,
+      location: info.location,
+      allowedDevices: info.allowedDevices,
+      contactEmail: maskIdentifier(info.contactEmail),
+      contactPhone: maskIdentifier(info.contactPhone),
+      contactLandline: maskIdentifier(info.contactLandline),
+    };
+  },
+};
+
+const listNetworkDevicesTool: AgentTool = {
+  name: 'list_network_devices',
+  title: '校园网在线设备',
+  description:
+    '列出当前校园网在线设备。返回的 key 可用于 logout_network_device，IP/MAC 展示时会脱敏。',
+  parameters: {type: 'object', properties: {}},
+  risk: 'read',
+  permission: 'campus.network.devices.read',
+  summarize: () => '查询校园网在线设备',
+  run: async () => {
+    requireRealSession();
+    const devices = await getOnlineNetworkDevices();
+    return {
+      count: devices.length,
+      devices: devices.slice(0, 20).map(device => ({
+        key: device.key,
+        ip4: maskIdentifier(device.ip4),
+        ip6: maskIdentifier(device.ip6),
+        loggedAt: device.loggedAt,
+        mac: maskIdentifier(device.mac),
+        authPermission: device.authPermission,
+      })),
+    };
+  },
+};
+
+const listSportsVenuesTool: AgentTool = {
+  name: 'list_sports_venues',
+  title: '体育场馆列表',
+  description: '列出已接入的体育场馆项目，用于后续查询场地空闲时段。',
+  parameters: {type: 'object', properties: {}},
+  risk: 'read',
+  permission: 'campus.sports.read',
+  summarize: () => '查询体育场馆列表',
+  run: async () => ({
+    venues: sportsIdInfoList.map(v => ({
+      name: v.name,
+      gymId: v.gymId,
+      itemId: v.itemId,
+    })),
+  }),
+};
+
+const searchSportsSlotsTool: AgentTool = {
+  name: 'search_sports_slots',
+  title: '体育场地空闲查询',
+  description:
+    '查询某体育项目某天可预约场地。可用 venueName 模糊匹配，或直接传 gymId/itemId。只查询，不预约、不支付。',
+  parameters: {
+    type: 'object',
+    properties: {
+      venueName: {type: 'string', description: '项目名，如 气膜馆羽毛球场'},
+      gymId: {type: 'string'},
+      itemId: {type: 'string'},
+      date: {type: 'string', description: 'YYYY-MM-DD，默认今天'},
+    },
+  },
+  risk: 'read',
+  permission: 'campus.sports.read',
+  summarize: (a: {venueName?: string}) => `查询体育场地：${a?.venueName ?? ''}`,
+  run: async (args: {
+    venueName?: string;
+    gymId?: string;
+    itemId?: string;
+    date?: string;
+  }) => {
+    requireRealSession();
+    const keyword = String(args.venueName ?? '').trim();
+    const venue =
+      args.gymId && args.itemId
+        ? {
+            name: keyword || '指定场馆',
+            gymId: String(args.gymId),
+            itemId: String(args.itemId),
+          }
+        : sportsIdInfoList.find(v => v.name.includes(keyword)) ??
+          sportsIdInfoList.find(v => keyword.includes(v.name));
+    if (!venue) {
+      return {
+        error: `未找到体育项目：${keyword}`,
+        availableVenues: sportsIdInfoList.map(v => v.name),
+      };
+    }
+    const date = args.date ? normalizeDateArg(args.date) : sportsDateString(0);
+    const info = await getSportsResources(venue.gymId, venue.itemId, date);
+    const slots = info.data
+      .filter(item => item.canNetBook && !item.locked)
+      .slice(0, 40)
+      .map(item => ({
+        resId: item.resId,
+        timeSession: item.timeSession,
+        fieldName: item.fieldName,
+        cost: item.cost,
+        overlaySize: item.overlaySize,
+      }));
+    return {
+      venue: venue.name,
+      date,
+      limit: {count: info.count, init: info.init},
+      availableCount: slots.length,
+      slots,
+    };
+  },
+};
+
+const listSportsReservationRecordsTool: AgentTool = {
+  name: 'list_sports_reservation_records',
+  title: '体育预约记录',
+  description:
+    '查询当前账号的体育场馆预约/订单记录。只读，不执行取消或支付。',
+  parameters: {type: 'object', properties: {}},
+  risk: 'read',
+  permission: 'campus.sports.reservation.read',
+  summarize: () => '查询体育预约记录',
+  run: async () => {
+    requireRealSession();
+    const records = await getSportsReservationRecords();
+    return {
+      count: records.length,
+      records: records.slice(0, 20).map(item => ({
+        name: item.name,
+        field: item.field,
+        time: item.time,
+        price: item.price,
+        method: item.method,
+        canCancel: Boolean(item.bookId),
+        hasPaymentAction: Boolean(item.payId),
+      })),
+    };
+  },
+};
+
+const listClassroomBuildingsTool: AgentTool = {
+  name: 'list_classroom_buildings',
+  title: '教学楼列表',
+  description:
+    '列出可查询空教室状态的教学楼。用户想找空教室但没指定楼宇时，先调用此工具。',
+  parameters: {type: 'object', properties: {}},
+  risk: 'read',
+  permission: 'campus.classroom.read',
+  summarize: () => '查询教学楼列表',
+  run: async () => {
+    requireRealSession();
+    const buildings = await fetchClassroomList();
+    return {
+      buildings: buildings.map(b => ({
+        name: b.name,
+        currentWeekNumber: b.weekNumber,
+      })),
+    };
+  },
+};
+
+const findAvailableClassroomsTool: AgentTool = {
+  name: 'find_available_classrooms',
+  title: '查找空教室',
+  description:
+    '查询某教学楼的空教室。dayIndex 为周一=1 到周日=7；periods 为要查的节次（1-6）。不传 dayIndex 默认今天，不传 periods 返回全天空闲节次数汇总。',
+  parameters: {
+    type: 'object',
+    properties: {
+      buildingName: {type: 'string', description: '教学楼名称，如 六教'},
+      weekNumber: {type: 'number', description: '教学周，不传则使用教务系统当前周'},
+      dayIndex: {type: 'number', description: '周一=1 到周日=7，默认今天'},
+      periods: {
+        type: 'array',
+        items: {type: 'number'},
+        description: '节次数组，1-6；例如下午通常可传 [3,4]',
+      },
+    },
+    required: ['buildingName'],
+  },
+  risk: 'read',
+  permission: 'campus.classroom.read',
+  summarize: (a: {buildingName?: string}) =>
+    `查找空教室：${a?.buildingName ?? ''}`,
+  run: async (args: {
+    buildingName: string;
+    weekNumber?: number;
+    dayIndex?: number;
+    periods?: number[];
+  }) => {
+    requireRealSession();
+    const buildings = await fetchClassroomList();
+    const keyword = String(args.buildingName ?? '').trim();
+    const building =
+      buildings.find(b => b.name === keyword) ??
+      buildings.find(b => b.name.includes(keyword) || keyword.includes(b.name));
+    if (!building) {
+      return {
+        error: `未找到教学楼：${keyword}`,
+        availableBuildings: buildings.map(b => b.name),
+      };
+    }
+    const weekNumber = Number(args.weekNumber ?? building.weekNumber);
+    const state = await fetchClassroomState(building.searchName, weekNumber);
+    const dayIndex = Math.min(
+      7,
+      Math.max(1, Number(args.dayIndex ?? currentClassroomDayIndex())),
+    );
+    const requestedPeriods = Array.isArray(args.periods)
+      ? args.periods
+          .map(Number)
+          .filter(p => Number.isInteger(p) && p >= 1 && p <= PERIODS_PER_DAY)
+      : [];
+    const start = (dayIndex - 1) * PERIODS_PER_DAY;
+    const slots =
+      requestedPeriods.length > 0
+        ? requestedPeriods.map(p => start + p - 1)
+        : Array.from({length: PERIODS_PER_DAY}, (_, i) => start + i);
+    const available = state.classroomStates
+      .map(room => {
+        const freePeriods = slots
+          .map(slot => ({
+            period: (slot % PERIODS_PER_DAY) + 1,
+            free: room.status[slot] === ClassroomStatus.AVAILABLE,
+          }))
+          .filter(item => item.free)
+          .map(item => item.period);
+        return {
+          name: room.name,
+          freePeriods,
+          availableForRequestedRange:
+            requestedPeriods.length > 0 &&
+            freePeriods.length === requestedPeriods.length,
+        };
+      })
+      .filter(room =>
+        requestedPeriods.length > 0
+          ? room.availableForRequestedRange
+          : room.freePeriods.length > 0,
+      );
+    return {
+      building: building.name,
+      weekNumber: state.currentWeekNumber,
+      dayIndex,
+      date: state.datesOfCurrentWeek[dayIndex - 1],
+      requestedPeriods:
+        requestedPeriods.length > 0 ? requestedPeriods : '全天 1-6 节',
+      count: available.length,
+      classrooms: available.slice(0, 40),
+    };
+  },
+};
+
 const listLibrariesTool: AgentTool = {
   name: 'list_libraries',
+  title: '图书馆列表',
   description: '列出可预约座位的图书馆及其有效性。预约座位的第一步。',
   parameters: {type: 'object', properties: {}},
+  risk: 'read',
+  permission: 'campus.library.read',
   summarize: () => '获取图书馆列表',
   run: async () => {
     requireRealSession();
@@ -241,6 +734,7 @@ const listLibrariesTool: AgentTool = {
 
 const listFloorsTool: AgentTool = {
   name: 'list_library_floors',
+  title: '图书馆楼层空位',
   description:
     '列出某图书馆各楼层及其空位数（available/total）。需先用 list_libraries 拿到 libraryId。',
   parameters: {
@@ -251,6 +745,8 @@ const listFloorsTool: AgentTool = {
     },
     required: ['libraryId'],
   },
+  risk: 'read',
+  permission: 'campus.library.read',
   summarize: () => '查询楼层空位',
   run: async (args: {libraryId: number; date?: string}) => {
     requireRealSession();
@@ -273,6 +769,7 @@ const listFloorsTool: AgentTool = {
 
 const listSectionsTool: AgentTool = {
   name: 'list_library_sections',
+  title: '图书馆分区空位',
   description:
     '列出某楼层下各分区及空位数。需先用 list_library_floors 拿到 floorId。',
   parameters: {
@@ -283,6 +780,8 @@ const listSectionsTool: AgentTool = {
     },
     required: ['floorId'],
   },
+  risk: 'read',
+  permission: 'campus.library.read',
   summarize: () => '查询分区空位',
   run: async (args: {floorId: number; date?: string}) => {
     requireRealSession();
@@ -305,6 +804,7 @@ const listSectionsTool: AgentTool = {
 
 const findSeatsTool: AgentTool = {
   name: 'find_available_seats',
+  title: '可用座位查询',
   description:
     '列出某分区当前可预约的座位（仅返回可用座位）。需先用 list_library_sections 拿到 sectionId。返回的 seatId + seatType 用于 book_library_seat。',
   parameters: {
@@ -315,6 +815,8 @@ const findSeatsTool: AgentTool = {
     },
     required: ['sectionId'],
   },
+  risk: 'read',
+  permission: 'campus.library.read',
   summarize: () => '查找可用座位',
   run: async (args: {sectionId: number; date?: string}) => {
     requireRealSession();
@@ -335,12 +837,214 @@ const findSeatsTool: AgentTool = {
   },
 };
 
+const listLibraryBookingRecordsTool: AgentTool = {
+  name: 'list_library_booking_records',
+  title: '图书馆预约记录',
+  description:
+    '查询当前账号的图书馆座位预约记录。用户问“我预约了哪个座位/我的图书馆预约/能不能取消预约”时使用。',
+  parameters: {type: 'object', properties: {}},
+  risk: 'read',
+  permission: 'campus.library.booking.read',
+  summarize: () => '查询图书馆预约记录',
+  run: async () => {
+    requireRealSession();
+    const records = await getLibraryBookingRecords();
+    return {
+      count: records.length,
+      records: records.slice(0, 20),
+    };
+  },
+};
+
+const listLibraryRoomTypesTool: AgentTool = {
+  name: 'list_library_room_types',
+  title: '研读间类型列表',
+  description:
+    '列出可预约研读间类型及房间。查找或预约研读间前先调用它获取 kindId。',
+  parameters: {type: 'object', properties: {}},
+  risk: 'read',
+  permission: 'campus.library.room.read',
+  summarize: () => '查询研读间类型',
+  run: async () => {
+    requireRealSession();
+    const list = await getLibraryRoomBookingInfoList();
+    return {
+      types: list.map(item => ({
+        kindId: item.kindId,
+        kindName: item.kindName,
+        rooms: item.rooms.slice(0, 30).map(room => ({
+          devId: room.devId,
+          devName: room.devName,
+          minReserveTime: room.minReserveTime,
+        })),
+      })),
+    };
+  },
+};
+
+const findLibraryRoomsTool: AgentTool = {
+  name: 'find_library_rooms',
+  title: '查找可用研读间',
+  description:
+    '查询某天某类型研读间资源。date 支持 today/tomorrow/YYYY-MM-DD；传 startTime/endTime 时会过滤出该时段可用房间。',
+  parameters: {
+    type: 'object',
+    properties: {
+      kindId: {type: 'number', description: '研读间类型 id'},
+      kindName: {type: 'string', description: '类型名关键词，如 研讨间'},
+      date: {type: 'string', description: 'today/tomorrow/YYYY-MM-DD，默认今天'},
+      startTime: {type: 'string', description: 'HH:mm，可选'},
+      endTime: {type: 'string', description: 'HH:mm，可选'},
+    },
+  },
+  risk: 'read',
+  permission: 'campus.library.room.read',
+  summarize: () => '查找可用研读间',
+  run: async (args: {
+    kindId?: number;
+    kindName?: string;
+    date?: string;
+    startTime?: string;
+    endTime?: string;
+  }) => {
+    requireRealSession();
+    const date = normalizeDateArg(args.date);
+    const types = await getLibraryRoomBookingInfoList();
+    const kind =
+      args.kindId != null
+        ? types.find(t => t.kindId === Number(args.kindId))
+        : types.find(t => t.kindName.includes(String(args.kindName ?? '').trim()));
+    if (!kind) {
+      return {
+        error: '未找到研读间类型',
+        availableTypes: types.map(t => ({kindId: t.kindId, kindName: t.kindName})),
+      };
+    }
+    const resources = await getLibraryRoomBookingResourceList(
+      ymdFromIso(date),
+      kind.kindId,
+    );
+    const hasRange = Boolean(args.startTime && args.endTime);
+    const start = hasRange ? parseLocalTime(date, String(args.startTime)) : null;
+    const end = hasRange ? parseLocalTime(date, String(args.endTime)) : null;
+    const rooms = resources
+      .filter(room => {
+        if (!start || !end) {
+          return true;
+        }
+        if (room.openStart && String(args.startTime) < room.openStart) {
+          return false;
+        }
+        if (room.openEnd && String(args.endTime) > room.openEnd) {
+          return false;
+        }
+        return !room.usage.some(usage =>
+          rangesOverlap(start, end, usage.start, usage.end),
+        );
+      })
+      .slice(0, 40)
+      .map(room => ({
+        devId: room.devId,
+        devName: room.devName,
+        kindId: room.kindId,
+        kindName: room.kindName,
+        labName: room.labName,
+        roomName: room.roomName,
+        minMinute: room.minMinute,
+        maxMinute: room.maxMinute,
+        minUser: room.minUser,
+        maxUser: room.maxUser,
+        openStart: room.openStart,
+        openEnd: room.openEnd,
+        occupied: room.usage.slice(0, 8).map(usage => ({
+          start: usage.start.toISOString(),
+          end: usage.end.toISOString(),
+          title: usage.title,
+          owner: usage.owner,
+          ownerId: maskIdentifier(usage.ownerId),
+        })),
+      }));
+    return {
+      date,
+      kindId: kind.kindId,
+      kindName: kind.kindName,
+      requestedRange: hasRange
+        ? `${args.startTime}-${args.endTime}`
+        : '未指定时段',
+      count: rooms.length,
+      rooms,
+    };
+  },
+};
+
+const searchLibraryRoomMembersTool: AgentTool = {
+  name: 'search_library_room_members',
+  title: '研读间成员搜索',
+  description:
+    '按姓名/学号关键词搜索研读间预约成员，返回 memberAccNo 供 book_library_room 使用。涉及他人信息，结果会脱敏。',
+  parameters: {
+    type: 'object',
+    properties: {
+      keyword: {type: 'string', description: '姓名或学号关键词'},
+    },
+    required: ['keyword'],
+  },
+  risk: 'read',
+  permission: 'campus.library.room.member.read',
+  summarize: () => '搜索研读间成员',
+  run: async (args: {keyword: string}) => {
+    requireRealSession();
+    const records = await fuzzySearchLibraryId(String(args.keyword ?? '').trim());
+    return {
+      count: records.length,
+      members: records.slice(0, 10).map(item => ({
+        memberAccNo: item.id,
+        label: maskIdentifier(item.label),
+        department: item.department,
+      })),
+    };
+  },
+};
+
+const listLibraryRoomBookingRecordsTool: AgentTool = {
+  name: 'list_library_room_booking_records',
+  title: '研读间预约记录',
+  description: '查询未来 7 天研读间预约记录。取消预约前先调用它拿 uuid。',
+  parameters: {type: 'object', properties: {}},
+  risk: 'read',
+  permission: 'campus.library.room.booking.read',
+  summarize: () => '查询研读间预约记录',
+  run: async () => {
+    requireRealSession();
+    const records = await getLibraryRoomBookingRecord();
+    return {
+      count: records.length,
+      records: records.slice(0, 20).map(item => ({
+        uuid: item.uuid,
+        rsvId: item.rsvId,
+        owner: item.owner,
+        ownerId: maskIdentifier(item.ownerId),
+        date: item.date,
+        begin: item.begin.toISOString(),
+        end: item.end.toISOString(),
+        devName: item.devName,
+        kindName: item.kindName,
+        members: item.members.map(member => ({
+          name: member.name,
+          userId: maskIdentifier(member.userId),
+        })),
+      })),
+    };
+  },
+};
+
 // ============================================================
 // 写工具（需确认）
 // ============================================================
 
 const bookSeatTool: AgentTool = {
   name: 'book_library_seat',
+  title: '预约图书馆座位',
   description:
     '预约一个图书馆座位（真实下单）。参数来自 find_available_seats（seatId、seatType）与 list_library_sections（sectionId）。执行前会请用户确认。',
   parameters: {
@@ -355,14 +1059,59 @@ const bookSeatTool: AgentTool = {
     },
     required: ['seatId', 'seatType', 'sectionId'],
   },
+  risk: 'write_reversible',
+  permission: 'campus.library.booking.write',
   requiresConfirmation: true,
   summarize: (a: any) => `预约座位 ${a?.seatName ?? a?.seatId ?? ''}`,
+  dryRun: async (a: any) => {
+    requireRealSession();
+    const seats = await getLibrarySeatList(
+      Number(a.sectionId),
+      dateChoiceFromArg(a.date),
+    );
+    const seat = seats.find(item => item.id === Number(a.seatId));
+    if (!seat) {
+      throw new Error('未在该分区找到目标座位');
+    }
+    if (seat.status !== 1) {
+      throw new Error(`目标座位当前状态不是可预约：${seatStatusLabel[seat.status] ?? seat.status}`);
+    }
+    return {
+      title: '预约图书馆座位',
+      summary: `${a?.sectionName ? a.sectionName + ' · ' : ''}${
+        a?.seatName ?? seat.zhName
+      }（${a?.date === 'tomorrow' ? '明天' : '今天'}）`,
+      affectedResource: a?.seatName ?? seat.zhName,
+      reversible: true,
+    };
+  },
   confirmPrompt: (a: any) => ({
     title: '确认预约座位',
     message: `${a?.sectionName ? a.sectionName + ' · ' : ''}${
       a?.seatName ?? '座位 ' + a?.seatId
     }（${a?.date === 'tomorrow' ? '明天' : '今天'}）\n\n确认后将真实下单。`,
   }),
+  verify: async (a: any) => {
+    const seatLabel = String(a?.seatName ?? a?.seatId ?? '');
+    const records = await getLibraryBookingRecords();
+    const hit = records.find(record =>
+      seatLabel ? record.pos.includes(seatLabel) : Boolean(record.delId),
+    );
+    return hit
+      ? {ok: true, message: '已在预约记录中确认'}
+      : {ok: false, message: '预约后未在记录中找到该座位'};
+  },
+  undo: async (_a: any, result: any) => {
+    const bookingId = result?.booking?.delId;
+    if (!bookingId) {
+      return {ok: false, message: '缺少预约取消 id，无法自动撤销'};
+    }
+    const cancel = await cancelLibraryBooking(String(bookingId));
+    return {
+      ok: cancel.status === 0 || cancel.status === 1,
+      message: cancel.msg || '已尝试取消预约',
+    };
+  },
   run: async (args: {
     seatId: number;
     seatType: number;
@@ -376,48 +1125,319 @@ const bookSeatTool: AgentTool = {
       dateChoiceFromArg(args.date),
     );
     if (result.status === 0) {
-      return {ok: true, message: '预约成功'};
+      const records = await getLibraryBookingRecords().catch(() => []);
+      const seatLabel = String((args as any).seatName ?? args.seatId);
+      const booking = records.find(record => record.pos.includes(seatLabel));
+      return {ok: true, message: '预约成功', booking};
     }
     return {ok: false, message: result.msg || '预约失败'};
   },
 };
 
-const rechargeEleTool: AgentTool = {
-  name: 'recharge_electricity',
+const cancelLibrarySeatBookingTool: AgentTool = {
+  name: 'cancel_library_seat_booking',
+  title: '取消图书馆座位预约',
   description:
-    '给宿舍电费充值（真实支付）。amount 为充值金额（1–500 元整数）。执行前会请用户确认，确认后唤起支付宝完成支付。',
+    '取消一个图书馆座位预约（真实操作）。bookingId 应优先使用 list_library_booking_records 返回的 delId。执行前会请用户确认。',
   parameters: {
     type: 'object',
     properties: {
-      amount: {type: 'number', description: '充值金额（元），1–500 整数'},
+      bookingId: {type: 'string', description: '预约取消 id，通常是记录里的 delId'},
+      seatLabel: {type: 'string', description: '座位/位置描述，用于确认展示'},
+      time: {type: 'string', description: '预约时间，用于确认展示'},
     },
-    required: ['amount'],
+    required: ['bookingId'],
   },
+  risk: 'write_reversible',
+  permission: 'campus.library.booking.write',
   requiresConfirmation: true,
-  summarize: (a: any) => `电费充值 ${a?.amount ?? ''} 元`,
-  confirmPrompt: (a: any) => ({
-    title: '确认电费充值',
-    message: `将为宿舍充值 ${a?.amount} 元，确认后唤起支付宝完成支付。`,
-  }),
-  run: async (args: {amount: number}) => {
+  summarize: (a: any) => `取消座位预约 ${a?.seatLabel ?? a?.bookingId ?? ''}`,
+  dryRun: async (a: any) => {
     requireRealSession();
-    const amount = Number(args.amount);
-    if (!Number.isInteger(amount) || amount <= 0 || amount > 500) {
-      return {ok: false, message: '金额需为 1–500 的整数'};
+    const records = await getLibraryBookingRecords();
+    const bookingId = String(a.bookingId ?? '');
+    const record = records.find(item => item.delId === bookingId || item.id === bookingId);
+    if (!record) {
+      throw new Error('未找到要取消的图书馆座位预约');
     }
-    const payCode = await getEleRechargePayCode(amount);
-    const url = buildAlipayUrl(payCode);
-    const canOpen = await Linking.canOpenURL(url);
-    if (!canOpen) {
-      return {ok: false, message: '未安装支付宝或无法唤起，请改用网页充值'};
+    return {
+      title: '取消图书馆座位预约',
+      summary: `${record.pos} · ${record.time}`,
+      affectedResource: record.pos,
+      reversible: false,
+    };
+  },
+  confirmPrompt: (a: any) => ({
+    title: '确认取消座位预约',
+    message: `将取消图书馆座位预约：${a?.seatLabel ?? a?.bookingId}${
+      a?.time ? '\n' + a.time : ''
+    }\n\n取消后如需使用座位，需要重新预约。`,
+    destructive: true,
+  }),
+  verify: async (a: any) => {
+    const bookingId = String(a.bookingId ?? '');
+    const records = await getLibraryBookingRecords();
+    const exists = records.some(item => item.delId === bookingId || item.id === bookingId);
+    return exists
+      ? {ok: false, message: '取消后该预约仍在记录中'}
+      : {ok: true, message: '已确认预约记录消失'};
+  },
+  run: async (args: {bookingId: string}) => {
+    requireRealSession();
+    const result = await cancelLibraryBooking(String(args.bookingId));
+    if (result.status === 0 || result.status === 1) {
+      return {ok: true, message: result.msg || '已取消预约'};
     }
-    await Linking.openURL(url);
-    return {ok: true, message: `已唤起支付宝，请在支付宝内完成 ${amount} 元支付`};
+    return {ok: false, message: result.msg || '取消失败'};
+  },
+};
+
+const logoutNetworkDeviceTool: AgentTool = {
+  name: 'logout_network_device',
+  title: '注销校园网设备',
+  description:
+    '注销一个校园网在线设备。先用 list_network_devices 获取 key，再确认执行。不会尝试重新登录设备。',
+  parameters: {
+    type: 'object',
+    properties: {
+      key: {type: 'number', description: 'list_network_devices 返回的设备 key'},
+    },
+    required: ['key'],
+  },
+  risk: 'write_reversible',
+  permission: 'campus.network.devices.write',
+  requiresConfirmation: true,
+  summarize: (a: any) => `注销校园网设备 ${a?.key ?? ''}`,
+  dryRun: async (a: any) => {
+    requireRealSession();
+    const devices = await getOnlineNetworkDevices();
+    const device = devices.find(item => item.key === Number(a.key));
+    if (!device) {
+      throw new Error('未找到要注销的校园网设备');
+    }
+    return {
+      title: '注销校园网设备',
+      summary: `${device.authPermission} · ${maskIdentifier(device.ip4)} · ${maskIdentifier(
+        device.mac,
+      )}`,
+      affectedResource: `${maskIdentifier(device.ip4)} / ${maskIdentifier(device.mac)}`,
+      reversible: false,
+    };
+  },
+  confirmPrompt: (_a: any, preview?: ActionPreview) => ({
+    title: '确认注销校园网设备',
+    message:
+      preview?.summary ??
+      '将注销该在线设备。设备可能会立刻断网，需要用户自行重新认证。',
+    destructive: true,
+  }),
+  verify: async (a: any) => {
+    const devices = await getOnlineNetworkDevices();
+    const exists = devices.some(item => item.key === Number(a.key));
+    return exists
+      ? {ok: false, message: '注销后设备仍在线'}
+      : {ok: true, message: '已确认设备不在在线列表'};
+  },
+  run: async (args: {key: number}) => {
+    requireRealSession();
+    const devices = await getOnlineNetworkDevices();
+    const device = devices.find(item => item.key === Number(args.key));
+    if (!device) {
+      return {ok: false, message: '未找到要注销的设备'};
+    }
+    return logoutNetworkDevice({key: device.key, mac: device.mac});
+  },
+};
+
+const bookLibraryRoomTool: AgentTool = {
+  name: 'book_library_room',
+  title: '预约研读间',
+  description:
+    '预约一个研读间。必须来自 find_library_rooms 返回的 devId/kindId；startTime/endTime 为 HH:mm，date 为 today/tomorrow/YYYY-MM-DD。执行前会 dry-run 并确认。',
+  parameters: {
+    type: 'object',
+    properties: {
+      devId: {type: 'number'},
+      kindId: {type: 'number'},
+      date: {type: 'string', description: 'today/tomorrow/YYYY-MM-DD'},
+      startTime: {type: 'string', description: 'HH:mm'},
+      endTime: {type: 'string', description: 'HH:mm'},
+      devName: {type: 'string', description: '房间名，用于确认和验证'},
+      memberAccNos: {
+        type: 'array',
+        items: {type: 'number'},
+        description: 'search_library_room_members 返回的 memberAccNo，可选',
+      },
+    },
+    required: ['devId', 'kindId', 'date', 'startTime', 'endTime'],
+  },
+  risk: 'write_reversible',
+  permission: 'campus.library.room.booking.write',
+  requiresConfirmation: true,
+  summarize: (a: any) => `预约研读间 ${a?.devName ?? a?.devId ?? ''}`,
+  dryRun: async (a: any) => {
+    requireRealSession();
+    const date = normalizeDateArg(a.date);
+    const startTs = toRoomTimestamp(date, String(a.startTime));
+    const endTs = toRoomTimestamp(date, String(a.endTime));
+    const start = new Date(startTs.replace(' ', 'T'));
+    const end = new Date(endTs.replace(' ', 'T'));
+    if (!(start < end)) {
+      throw new Error('研读间预约结束时间必须晚于开始时间');
+    }
+    const resources = await getLibraryRoomBookingResourceList(
+      ymdFromIso(date),
+      Number(a.kindId),
+    );
+    const room = resources.find(item => item.devId === Number(a.devId));
+    if (!room) {
+      throw new Error('未找到目标研读间资源');
+    }
+    const minutes = Math.round((end.getTime() - start.getTime()) / 60000);
+    if (room.minMinute && minutes < room.minMinute) {
+      throw new Error(`预约时长不能少于 ${room.minMinute} 分钟`);
+    }
+    if (room.maxMinute && minutes > room.maxMinute) {
+      throw new Error(`预约时长不能超过 ${room.maxMinute} 分钟`);
+    }
+    const userCount = 1 + (Array.isArray(a.memberAccNos) ? a.memberAccNos.length : 0);
+    if (room.minUser && userCount < room.minUser) {
+      throw new Error(`该研读间至少需要 ${room.minUser} 人`);
+    }
+    if (room.maxUser && userCount > room.maxUser) {
+      throw new Error(`该研读间最多允许 ${room.maxUser} 人`);
+    }
+    if (
+      room.usage.some(usage => rangesOverlap(start, end, usage.start, usage.end))
+    ) {
+      throw new Error('该时段已被占用');
+    }
+    return {
+      title: '预约研读间',
+      summary: `${room.devName} · ${date} ${a.startTime}-${a.endTime} · ${userCount} 人`,
+      affectedResource: room.devName,
+      reversible: true,
+    };
+  },
+  confirmPrompt: (_a: any, preview?: ActionPreview) => ({
+    title: '确认预约研读间',
+    message: `${preview?.summary ?? '将预约研读间'}\n\n预约占用公共资源，确认后会真实提交。`,
+  }),
+  verify: async (a: any, result: any) => {
+    const date = normalizeDateArg(a.date);
+    const start = new Date(toRoomTimestamp(date, String(a.startTime)).replace(' ', 'T'));
+    const end = new Date(toRoomTimestamp(date, String(a.endTime)).replace(' ', 'T'));
+    const records = await getLibraryRoomBookingRecord();
+    const found = records.find(record => {
+      if (result?.recordUuid && record.uuid === result.recordUuid) {
+        return true;
+      }
+      return (
+        (!a.devName || record.devName.includes(String(a.devName))) &&
+        sameMinute(record.begin, start) &&
+        sameMinute(record.end, end)
+      );
+    });
+    return found
+      ? {ok: true, message: '已在研读间预约记录中确认'}
+      : {ok: false, message: '预约后未在研读间记录中找到该预约'};
+  },
+  undo: async (_a: any, result: any) => {
+    const uuid = result?.recordUuid;
+    if (!uuid) {
+      return {ok: false, message: '缺少研读间预约 uuid，无法自动撤销'};
+    }
+    return cancelLibraryRoomBooking(String(uuid));
+  },
+  run: async (args: {
+    devId: number;
+    kindId: number;
+    date: string;
+    startTime: string;
+    endTime: string;
+    devName?: string;
+    memberAccNos?: number[];
+  }) => {
+    requireRealSession();
+    const date = normalizeDateArg(args.date);
+    const start = toRoomTimestamp(date, args.startTime);
+    const end = toRoomTimestamp(date, args.endTime);
+    const result = await bookLibraryRoomService({
+      devId: Number(args.devId),
+      start,
+      end,
+      memberAccNos: Array.isArray(args.memberAccNos)
+        ? args.memberAccNos.map(Number)
+        : [],
+    });
+    const records = await getLibraryRoomBookingRecord().catch(() => []);
+    const startDate = new Date(start.replace(' ', 'T'));
+    const endDate = new Date(end.replace(' ', 'T'));
+    const record = records.find(item =>
+      (args.devName ? item.devName.includes(args.devName) : true) &&
+      sameMinute(item.begin, startDate) &&
+      sameMinute(item.end, endDate),
+    );
+    return {
+      ...result,
+      recordUuid: record?.uuid,
+      recordDevName: record?.devName,
+    };
+  },
+};
+
+const cancelLibraryRoomBookingTool: AgentTool = {
+  name: 'cancel_library_room_booking',
+  title: '取消研读间预约',
+  description:
+    '取消研读间预约。先用 list_library_room_booking_records 获取 uuid，再确认执行。',
+  parameters: {
+    type: 'object',
+    properties: {
+      uuid: {type: 'string', description: '研读间预约 uuid'},
+      roomLabel: {type: 'string', description: '房间/时间描述，用于确认展示'},
+    },
+    required: ['uuid'],
+  },
+  risk: 'write_reversible',
+  permission: 'campus.library.room.booking.write',
+  requiresConfirmation: true,
+  summarize: (a: any) => `取消研读间预约 ${a?.roomLabel ?? a?.uuid ?? ''}`,
+  dryRun: async (a: any) => {
+    requireRealSession();
+    const records = await getLibraryRoomBookingRecord();
+    const record = records.find(item => item.uuid === String(a.uuid));
+    if (!record) {
+      throw new Error('未找到要取消的研读间预约');
+    }
+    return {
+      title: '取消研读间预约',
+      summary: `${record.devName} · ${record.begin.toLocaleString()}-${record.end.toLocaleTimeString()}`,
+      affectedResource: record.devName,
+      reversible: false,
+    };
+  },
+  confirmPrompt: (_a: any, preview?: ActionPreview) => ({
+    title: '确认取消研读间预约',
+    message: `${preview?.summary ?? '将取消研读间预约'}\n\n取消后如需使用，需要重新预约。`,
+    destructive: true,
+  }),
+  verify: async (a: any) => {
+    const records = await getLibraryRoomBookingRecord();
+    const exists = records.some(item => item.uuid === String(a.uuid));
+    return exists
+      ? {ok: false, message: '取消后该研读间预约仍在记录中'}
+      : {ok: true, message: '已确认研读间预约记录消失'};
+  },
+  run: async (args: {uuid: string}) => {
+    requireRealSession();
+    return cancelLibraryRoomBooking(String(args.uuid));
   },
 };
 
 const listPersonalEventsTool: AgentTool = {
   name: 'list_personal_events',
+  title: '个人备忘列表',
   description:
     '列出用户自建备忘日程（不含教务课表）。可按 startDate/endDate（YYYY-MM-DD）筛选；不传则默认本周。',
   parameters: {
@@ -427,6 +1447,8 @@ const listPersonalEventsTool: AgentTool = {
       endDate: {type: 'string', description: '结束日期 YYYY-MM-DD'},
     },
   },
+  risk: 'read',
+  permission: 'schedule.personal.read',
   summarize: () => '查询个人备忘日程',
   run: async (args: {startDate?: string; endDate?: string}) => {
     let start = args.startDate ? normalizeDateString(args.startDate) : '';
@@ -453,6 +1475,7 @@ const listPersonalEventsTool: AgentTool = {
 
 const getWeekScheduleTool: AgentTool = {
   name: 'get_week_schedule',
+  title: '周日程',
   description:
     '获取某周合并后的日程：教务课表 + 用户备忘。weekOffset：0=本周，1=下周，-1=上周。用于回答"这周/下周有什么安排"。',
   parameters: {
@@ -461,6 +1484,8 @@ const getWeekScheduleTool: AgentTool = {
       weekOffset: {type: 'number', description: '相对本周偏移，默认 0'},
     },
   },
+  risk: 'read',
+  permission: 'schedule.read',
   summarize: (a: {weekOffset?: number}) =>
     `读取${a?.weekOffset === 0 || a?.weekOffset === undefined ? '本' : ''}周日程`,
   run: async (args: {weekOffset?: number}) => {
@@ -496,6 +1521,7 @@ const getWeekScheduleTool: AgentTool = {
 
 const addPersonalEventTool: AgentTool = {
   name: 'add_personal_event',
+  title: '添加个人备忘',
   description:
     '为用户添加一条自建备忘日程（写入本地，与教务课表合并展示）。需明确日期、标题与时间段；执行前会请用户确认。',
   parameters: {
@@ -510,14 +1536,38 @@ const addPersonalEventTool: AgentTool = {
     },
     required: ['date', 'title', 'startTime', 'endTime'],
   },
+  risk: 'write_reversible',
+  permission: 'schedule.personal.write',
   requiresConfirmation: true,
   summarize: (a: any) => `添加备忘：${a?.title ?? ''}`,
+  dryRun: async (a: any) => ({
+    title: '添加个人备忘',
+    summary: `${normalizeDateString(a?.date)} ${a?.startTime}-${a?.endTime} · ${
+      a?.title ?? ''
+    }`,
+    affectedResource: a?.title,
+    reversible: true,
+  }),
   confirmPrompt: (a: any) => ({
     title: '确认添加备忘',
     message: `${a?.date} ${a?.startTime}-${a?.endTime}\n${a?.title}${
       a?.location ? '\n' + a.location : ''
     }`,
   }),
+  verify: async (_a: any, result: any) => {
+    const id = result?.id;
+    return id && findPersonalEvent(String(id))
+      ? {ok: true, message: '已在个人备忘中确认'}
+      : {ok: false, message: '添加后未找到个人备忘'};
+  },
+  undo: async (_a: any, result: any) => {
+    const id = result?.id;
+    if (!id) {
+      return {ok: false, message: '缺少备忘 id，无法撤销'};
+    }
+    const ok = await deletePersonalEventById(String(id));
+    return {ok, message: ok ? '已撤销新增备忘' : '撤销失败'};
+  },
   run: async (args: {
     date: string;
     title: string;
@@ -544,6 +1594,7 @@ const addPersonalEventTool: AgentTool = {
 
 const removePersonalEventTool: AgentTool = {
   name: 'remove_personal_event',
+  title: '删除个人备忘',
   description:
     '删除一条用户自建备忘。用 list_personal_events 返回的 id，或标题关键词匹配。不能删除教务课表。执行前会请用户确认。',
   parameters: {
@@ -553,12 +1604,47 @@ const removePersonalEventTool: AgentTool = {
     },
     required: ['idOrTitle'],
   },
+  risk: 'write_reversible',
+  permission: 'schedule.personal.write',
   requiresConfirmation: true,
   summarize: (a: any) => `删除备忘：${a?.idOrTitle ?? ''}`,
+  dryRun: async (a: any) => {
+    const found = findPersonalEvent(String(a?.idOrTitle ?? ''));
+    if (!found) {
+      throw new Error(`未找到匹配备忘：${a?.idOrTitle ?? ''}`);
+    }
+    return {
+      title: '删除个人备忘',
+      summary: `${found.date} ${found.startTime}-${found.endTime} · ${found.title}`,
+      affectedResource: found.title,
+      reversible: true,
+    };
+  },
   confirmPrompt: (a: any) => ({
     title: '确认删除备忘',
     message: `将删除：${a?.idOrTitle}\n（仅删除自建备忘，不影响教务课表）`,
   }),
+  verify: async (a: any) => {
+    const found = findPersonalEvent(String(a?.idOrTitle ?? ''));
+    return found
+      ? {ok: false, message: '删除后该备忘仍存在'}
+      : {ok: true, message: '已确认备忘删除'};
+  },
+  undo: async (_a: any, result: any) => {
+    const removed = result?.removed;
+    if (!removed) {
+      return {ok: false, message: '缺少原备忘内容，无法撤销'};
+    }
+    await appendPersonalEvent({
+      date: removed.date,
+      title: removed.title,
+      startTime: removed.startTime,
+      endTime: removed.endTime,
+      location: removed.location,
+      note: removed.note,
+    });
+    return {ok: true, message: '已重新添加被删除的备忘'};
+  },
   run: async (args: {idOrTitle: string}) => {
     const found = findPersonalEvent(args.idOrTitle);
     if (!found) {
@@ -566,13 +1652,14 @@ const removePersonalEventTool: AgentTool = {
     }
     const ok = await deletePersonalEventById(found.id);
     return ok
-      ? {ok: true, message: `已删除「${found.title}」`}
+      ? {ok: true, message: `已删除「${found.title}」`, removed: found}
       : {ok: false, message: '删除失败'};
   },
 };
 
 const rememberTool: AgentTool = {
   name: 'remember_preference',
+  title: '更新长期偏好记忆',
   description:
     '记住用户的长期偏好，便于后续个性化（如常用图书馆/分区、默认电费充值额、关注的课程）。当用户表达明确偏好时调用。',
   parameters: {
@@ -585,7 +1672,20 @@ const rememberTool: AgentTool = {
       note: {type: 'string', description: '其它要记住的自由偏好'},
     },
   },
+  risk: 'write_reversible',
+  permission: 'ai.memory.write',
+  requiresConfirmation: true,
   summarize: () => '更新个性化记忆',
+  dryRun: async (a: any) => ({
+    title: '更新长期偏好记忆',
+    summary: JSON.stringify(a ?? {}),
+    affectedResource: '本机 AI 记忆',
+    reversible: true,
+  }),
+  confirmPrompt: (a: any) => ({
+    title: '确认更新记忆',
+    message: `将记住这些长期偏好：${JSON.stringify(a ?? {})}`,
+  }),
   run: async (args: {
     favoriteLibrary?: string;
     favoriteSection?: string;
@@ -614,12 +1714,30 @@ export const AGENT_TOOLS: AgentTool[] = [
   getHomeworkDetailTool,
   getGradesTool,
   getElectricityTool,
+  getCampusCardBalanceTool,
+  getCampusCardTransactionsTool,
+  getNetworkBalanceTool,
+  getNetworkAccountInfoTool,
+  listNetworkDevicesTool,
+  logoutNetworkDeviceTool,
+  listSportsVenuesTool,
+  searchSportsSlotsTool,
+  listSportsReservationRecordsTool,
+  listClassroomBuildingsTool,
+  findAvailableClassroomsTool,
   listLibrariesTool,
   listFloorsTool,
   listSectionsTool,
   findSeatsTool,
+  listLibraryBookingRecordsTool,
+  listLibraryRoomTypesTool,
+  findLibraryRoomsTool,
+  searchLibraryRoomMembersTool,
+  listLibraryRoomBookingRecordsTool,
   bookSeatTool,
-  rechargeEleTool,
+  cancelLibrarySeatBookingTool,
+  bookLibraryRoomTool,
+  cancelLibraryRoomBookingTool,
   rememberTool,
 ];
 

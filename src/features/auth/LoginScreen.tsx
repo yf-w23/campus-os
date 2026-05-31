@@ -42,6 +42,7 @@ import {
   setSessionStudentId,
 } from '../../storage/preferencesStorage';
 import {AppDispatch} from '../../state/store';
+import {uiImages} from '../../app/assets/uiImages';
 import {syncCampusData} from '../../state/thunks/syncCampusData';
 import {resetLearningDemo} from '../../state/slices/learningSlice';
 import {CampusCredentials} from '../../domain/campus';
@@ -275,10 +276,7 @@ export function LoginScreen() {
           keyboardShouldPersistTaps="handled">
           <View style={styles.panel}>
             <View style={styles.heroBox}>
-              <Image
-                source={require('../../assets/illustrations/campus.png')}
-                style={styles.hero}
-              />
+              <Image source={uiImages.campus} style={styles.hero} />
             </View>
             <Text style={styles.title}>{t.appName}</Text>
             <Text style={styles.subtitle}>{t.auth.subtitle}</Text>

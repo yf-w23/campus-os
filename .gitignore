@@ -58,6 +58,7 @@ yarn-error.log
 # RN release 打包生成的产物（bundle + 拷进 res 的 drawable/raw），不入库
 android/app/src/main/assets/index.android.bundle
 android/app/src/main/res/drawable-*/src_*
+android/app/src/main/res/drawable-*/node_modules_*
 android/app/src/main/res/raw/*
 
 # Ruby / CocoaPods

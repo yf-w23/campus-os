@@ -36,6 +36,7 @@ import {AppDispatch} from '../../state/store';
 import {Chip} from '../common/components/Chip';
 import {MarkdownText} from '../common/components/MarkdownText';
 import {StaggerItem} from '../common/components/Animated';
+import {ActionConfirmationModal} from './ActionConfirmationModal';
 import {useAIChat} from './useAIChat';
 
 type AIScreenProps = CompositeScreenProps<
@@ -45,21 +46,33 @@ type AIScreenProps = CompositeScreenProps<
 
 function relativeTime(iso: string): string {
   const t = new Date(iso).getTime();
-  if (isNaN(t)) return '';
+  if (isNaN(t)) {
+    return '';
+  }
   const diff = Date.now() - t;
   const min = Math.floor(diff / 60000);
-  if (min < 1) return '刚刚';
-  if (min < 60) return `${min} 分钟前`;
+  if (min < 1) {
+    return '刚刚';
+  }
+  if (min < 60) {
+    return `${min} 分钟前`;
+  }
   const h = Math.floor(min / 60);
-  if (h < 24) return `${h} 小时前`;
+  if (h < 24) {
+    return `${h} 小时前`;
+  }
   const day = Math.floor(h / 24);
-  if (day < 7) return `${day} 天前`;
+  if (day < 7) {
+    return `${day} 天前`;
+  }
   return iso.slice(0, 10);
 }
 
 function previewOf(conv: Conversation): string {
   const last = conv.messages[conv.messages.length - 1];
-  if (!last) return '';
+  if (!last) {
+    return '';
+  }
   const text = last.content.replace(/\s+/g, ' ').trim();
   return text.length > 40 ? `${text.slice(0, 40)}…` : text;
 }
@@ -111,8 +124,8 @@ function buildSuggestions(
   if (pending.length > 0) {
     out.push('我还有哪些作业没交？按截止时间排一下');
   }
-  out.push('我的电费还够用吗？不够就帮我充值');
-  out.push('李文正馆现在还有空位吗？有的话帮我订一个');
+  out.push('余额、电费、校园网有没有异常？');
+  out.push('李文正馆现在还有空位吗？有的话先给我一份确认单');
   return out.slice(0, 4);
 }
 
@@ -159,8 +172,16 @@ function ChatBubble({message, index}: {message: ChatMessage; index: number}) {
 export function AIScreen({route, navigation}: AIScreenProps) {
   const t = useTranslation();
   const dispatch = useDispatch<AppDispatch>();
-  const {messages, streaming, provider, aiApiKeyConfigured, sendQuestion} =
-    useAIChat();
+  const {
+    messages,
+    streaming,
+    provider,
+    aiApiKeyConfigured,
+    sendQuestion,
+    pendingConfirmation,
+    approvePendingConfirmation,
+    cancelPendingConfirmation,
+  } = useAIChat();
   const conversations = useSelector(selectConversations);
   const activeConversationId = useSelector(selectActiveConversationId);
   const {agentStatus} = useSelector(selectAI);
@@ -188,7 +209,7 @@ export function AIScreen({route, navigation}: AIScreenProps) {
     dispatch(clearActiveConversation());
     setView('chat');
     setInput('');
-    void sendQuestion(pendingQuestion);
+    sendQuestion(pendingQuestion).catch(() => undefined);
   }, [dispatch, navigation, pendingQuestion, sendQuestion, streaming]);
 
   const handleSend = () => {
@@ -197,7 +218,7 @@ export function AIScreen({route, navigation}: AIScreenProps) {
       return;
     }
     setInput('');
-    void sendQuestion(question);
+    sendQuestion(question).catch(() => undefined);
     listRef.current?.scrollToEnd({animated: true});
   };
 
@@ -366,7 +387,9 @@ export function AIScreen({route, navigation}: AIScreenProps) {
                   key={label}
                   label={label}
                   variant={index === 0 ? 'accent' : 'default'}
-                  onPress={() => void sendQuestion(label)}
+                  onPress={() => {
+                    sendQuestion(label).catch(() => undefined);
+                  }}
                 />
               ))}
             </View>
@@ -426,6 +449,14 @@ export function AIScreen({route, navigation}: AIScreenProps) {
           </View>
         </View>
       </KeyboardAvoidingView>
+      <ActionConfirmationModal
+        visible={Boolean(pendingConfirmation)}
+        tool={pendingConfirmation?.tool}
+        spec={pendingConfirmation?.spec}
+        preview={pendingConfirmation?.preview}
+        onConfirm={approvePendingConfirmation}
+        onCancel={cancelPendingConfirmation}
+      />
     </SafeAreaView>
   );
 }

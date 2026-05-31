@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useCallback, useState} from 'react';
 import {
   Alert,
   DevSettings,
@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import {useFocusEffect} from '@react-navigation/native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useDispatch, useSelector} from 'react-redux';
 import {useTranslation} from '../../app/i18n';
@@ -28,6 +29,10 @@ import {
 import {setProvider} from '../../state/slices/aiSlice';
 import {clearCredentials, saveAIApiKey} from '../../storage/secureStorage';
 import {
+  clearActionAuditRecords,
+  loadActionAuditRecords,
+} from '../../storage/actionAuditStorage';
+import {
   clearSessionStudentId,
   setDemoMode as persistDemoMode,
   setLocale as persistLocale,
@@ -35,8 +40,42 @@ import {
   setAIProviderConfig,
 } from '../../storage/preferencesStorage';
 import {AIProviderPreset} from '../../domain/agent';
+import {AuditRecord} from '../../domain/actions';
 
 const presetKeys = Object.keys(AI_PRESETS) as AIProviderPreset[];
+
+const riskLabels: Record<AuditRecord['risk'], string> = {
+  read: '只读',
+  write_reversible: '可撤销写入',
+  write_irreversible: '不可逆写入',
+  payment: '支付',
+  credential: '凭证',
+};
+
+const confirmationLabels: Record<AuditRecord['confirmation'], string> = {
+  not_required: '无需确认',
+  approved: '已确认',
+  denied: '已取消',
+  unavailable: '无确认通道',
+};
+
+const statusLabels: Record<AuditRecord['status'], string> = {
+  success: '成功',
+  error: '失败',
+  cancelled: '已取消',
+};
+
+function formatAuditTime(value: string): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    return value;
+  }
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const hour = String(d.getHours()).padStart(2, '0');
+  const minute = String(d.getMinutes()).padStart(2, '0');
+  return `${month}-${day} ${hour}:${minute}`;
+}
 
 interface RowProps {
   label: string;
@@ -56,7 +95,9 @@ function Row({label, value, onPress, right, divider}: RowProps) {
       </View>
     </View>
   );
-  if (!onPress) return Inner;
+  if (!onPress) {
+    return Inner;
+  }
   return (
     <Pressable
       onPress={onPress}
@@ -80,6 +121,23 @@ export function SettingsScreen() {
   );
   const [customModel, setCustomModel] = useState(
     provider.preset === 'custom' ? provider.model : '',
+  );
+  const [auditRecords, setAuditRecords] = useState<AuditRecord[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      loadActionAuditRecords()
+        .then(records => {
+          if (active) {
+            setAuditRecords(records);
+          }
+        })
+        .catch(() => undefined);
+      return () => {
+        active = false;
+      };
+    }, []),
   );
 
   const handleSaveProvider = async () => {
@@ -128,6 +186,20 @@ export function SettingsScreen() {
     dispatch(logout());
     dispatch(resetLearningEmpty());
     await persistDemoMode(false);
+  };
+
+  const handleClearAuditRecords = () => {
+    Alert.alert('清空 AI 操作记录', '这只会清除本机审计记录，不影响对话历史。', [
+      {text: '取消', style: 'cancel'},
+      {
+        text: '清空',
+        style: 'destructive',
+        onPress: async () => {
+          await clearActionAuditRecords();
+          setAuditRecords([]);
+        },
+      },
+    ]);
   };
 
   return (
@@ -232,6 +304,65 @@ export function SettingsScreen() {
         <View style={styles.actions}>
           <PrimaryButton label={t.settings.save} onPress={handleSaveProvider} />
         </View>
+
+        <Text style={styles.groupHeader}>AI 操作记录</Text>
+        <View style={styles.auditGroup}>
+          {auditRecords.length === 0 ? (
+            <Text style={styles.auditEmpty}>暂无 AI 工具操作记录</Text>
+          ) : (
+            auditRecords.slice(0, 6).map((record, index) => (
+              <View
+                key={record.id}
+                style={[
+                  styles.auditRecord,
+                  index < Math.min(auditRecords.length, 6) - 1 &&
+                    styles.auditRecordDivider,
+                ]}>
+                <View style={styles.auditTopLine}>
+                  <Text style={styles.auditTitle} numberOfLines={1}>
+                    {record.toolTitle ?? record.toolName}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.auditStatus,
+                      record.status === 'success' && styles.auditStatusSuccess,
+                      record.status === 'error' && styles.auditStatusError,
+                      record.status === 'cancelled' &&
+                        styles.auditStatusCancelled,
+                    ]}>
+                    {statusLabels[record.status]}
+                  </Text>
+                </View>
+                <Text style={styles.auditMeta} numberOfLines={1}>
+                  {formatAuditTime(record.createdAt)} · {riskLabels[record.risk]} ·{' '}
+                  {confirmationLabels[record.confirmation]}
+                </Text>
+                {record.resultSummary || record.errorMessage ? (
+                  <Text style={styles.auditDetail} numberOfLines={2}>
+                    {record.errorMessage ?? record.resultSummary}
+                  </Text>
+                ) : null}
+                {record.verification ? (
+                  <Text style={styles.auditDetail} numberOfLines={1}>
+                    验证：{record.verification.ok ? '通过' : '未通过'}
+                    {record.verification.message
+                      ? ` · ${record.verification.message}`
+                      : ''}
+                  </Text>
+                ) : null}
+              </View>
+            ))
+          )}
+        </View>
+        {auditRecords.length > 0 ? (
+          <View style={styles.auditActions}>
+            <PrimaryButton
+              label={`清空操作记录（${auditRecords.length}）`}
+              onPress={handleClearAuditRecords}
+              variant="ghost"
+            />
+          </View>
+        ) : null}
 
         <View style={styles.bottomActions}>
           {!auth.demoMode ? (
@@ -356,6 +487,66 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: spacing.sm,
+  },
+  auditGroup: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    overflow: 'hidden',
+  },
+  auditEmpty: {
+    ...typography.body,
+    color: colors.textMuted,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.lg,
+    textAlign: 'center',
+  },
+  auditRecord: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    gap: 4,
+  },
+  auditRecordDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.divider,
+  },
+  auditTopLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  auditTitle: {
+    ...typography.body,
+    color: colors.text,
+    flex: 1,
+    fontWeight: '600',
+  },
+  auditStatus: {
+    ...typography.micro,
+    color: colors.textMuted,
+    fontWeight: '700',
+  },
+  auditStatusSuccess: {
+    color: colors.success,
+  },
+  auditStatusError: {
+    color: colors.error,
+  },
+  auditStatusCancelled: {
+    color: colors.warning,
+  },
+  auditMeta: {
+    ...typography.caption,
+    color: colors.textMuted,
+  },
+  auditDetail: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  auditActions: {
+    marginTop: spacing.sm,
   },
   bottomActions: {
     marginTop: spacing.xl + spacing.md,

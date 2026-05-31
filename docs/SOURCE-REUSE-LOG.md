@@ -10,6 +10,9 @@
 | `src/services/auth/tsinghuaAuth.ts` | thu-info-app 登录 / 2FA / roam 流程 | BSL 1.1 | 参考请求字段与状态机，独立实现 |
 | `src/services/campus/learningAdapter.ts` | learnX + thu-learn-lib 网络学堂 adapter | MIT | 参考 endpoint、字段映射与状态分类，独立实现 |
 | `src/services/campus/learningAdapter.ts` | thu-info-app 课表 JSONP 解析 | BSL 1.1 | 参考 JSONP 格式与字段名，独立实现 |
+| `src/services/campus/network.ts` | thu-info-app `network.ts` 校园网接口协议 | BSL 1.1 | 参考 endpoint 与 HTML 字段位置，按本项目 WebVPN transport 重写 |
+| `src/services/campus/campusCard.ts` | thu-info-app `card.ts` 校园卡只读接口协议 | BSL 1.1 | 仅接入余额/流水只读能力，按本项目认证与传输层重写 |
+| `src/services/campus/library.ts` | thu-info-app `library.ts` 图书馆座位与研读间接口协议 | BSL 1.1 | 参考 endpoint、字段名和确认流程，按本项目 WebVPN/CAB 适配层重写 |
 
 ## 说明
 

@@ -142,7 +142,9 @@ async function getSportsResourceData(
   }
   const p2 = /addCost\('(.*?)','(.*?)'\);/g;
   for (let r2 = p2.exec(rawHtml); r2 != null; r2 = p2.exec(rawHtml)) {
-    if (result[r2[1]]) result[r2[1]].cost = Number(r2[2]);
+    if (result[r2[1]]) {
+      result[r2[1]].cost = Number(r2[2]);
+    }
   }
   const p3 = /markResStatus\('(.*?)','(.*?)','(.*?)'\);/g;
   for (let r3 = p3.exec(rawHtml); r3 != null; r3 = p3.exec(rawHtml)) {
@@ -212,7 +214,9 @@ function serializeFormInputs(form: ReturnType<typeof parse>): Record<string, str
   const postForm: Record<string, string> = {};
   form.querySelectorAll('input').forEach(el => {
     const name = el.getAttribute('name');
-    if (name) postForm[name] = el.getAttribute('value') ?? '';
+    if (name) {
+      postForm[name] = el.getAttribute('value') ?? '';
+    }
   });
   return postForm;
 }
@@ -220,13 +224,19 @@ function serializeFormInputs(form: ReturnType<typeof parse>): Record<string, str
 async function generalGetPayCode(paymentHtml: string): Promise<string> {
   const root = parse(paymentHtml);
   const form = root.querySelector('form');
-  if (!form) throw new Error('支付页缺少 form');
+  if (!form) {
+    throw new Error('支付页缺少 form');
+  }
   const action = form.getAttribute('action');
   const biz = root.querySelector('[name=biz_content]')?.getAttribute('value');
-  if (!action || !biz) throw new Error('支付页缺少 action 或 biz_content');
+  if (!action || !biz) {
+    throw new Error('支付页缺少 action 或 biz_content');
+  }
   const page = await webvpnTransport.fetchText(action, {body: {biz_content: biz}});
   const qrCode = parse(page).querySelector('input[name=qrCode]')?.getAttribute('value');
-  if (!qrCode) throw new Error('支付页未返回 qrCode');
+  if (!qrCode) {
+    throw new Error('支付页未返回 qrCode');
+  }
   return qrCode.substring(qrCode.lastIndexOf('/') + 1);
 }
 
@@ -244,7 +254,7 @@ export async function makeSportsReservation(params: {
   return withSportsSession(async () => {
   const orderText = await webvpnTransport.fetchText(SPORTS_MAKE_ORDER_URL, {
     body: {
-      'bookData.totalCost': params.totalCost,
+      'bookData.totalCost': String(params.totalCost),
       'bookData.book_person_zjh': '',
       'bookData.book_person_name': '',
       'bookData.book_person_phone': params.phone,
@@ -252,10 +262,10 @@ export async function makeSportsReservation(params: {
       gymnasium_idForCache: params.gymId,
       item_idForCache: params.itemId,
       time_dateForCache: params.date,
-      userTypeNumForCache: 1,
+      userTypeNumForCache: '1',
       putongRes: 'putongRes',
       code: params.captcha,
-      selectedPayWay: 1,
+      selectedPayWay: '1',
       allFieldTime: `${params.resHashId}#${params.date}`,
     },
   });
@@ -278,7 +288,7 @@ export async function makeSportsReservation(params: {
       gymnasium_idForCache: params.gymId,
       item_idForCache: params.itemId,
       time_dateForCache: params.date,
-      userTypeNumForCache: 1,
+      userTypeNumForCache: '1',
       allFieldTime: `${params.resHashId}#${params.date}`,
     },
     timeoutMs: 60000,
@@ -313,7 +323,9 @@ export async function makeSportsReservation(params: {
   const postForm: Record<string, string> = {};
   inputs.forEach(el => {
     const name = el.getAttribute('name');
-    if (name) postForm[name] = el.getAttribute('value') ?? '';
+    if (name) {
+      postForm[name] = el.getAttribute('value') ?? '';
+    }
   });
   postForm.channelId = '0101';
   const payPage = await webvpnTransport.fetchText(SPORTS_PAYMENT_ACTION_URL, {
@@ -331,7 +343,9 @@ export async function makeSportsReservation(params: {
 export async function openSportsAlipay(payCode: string): Promise<boolean> {
   const url = buildAlipayUrl(payCode);
   const can = await Linking.canOpenURL(url);
-  if (can) await Linking.openURL(url);
+  if (can) {
+    await Linking.openURL(url);
+  }
   return can;
 }
 
@@ -343,8 +357,8 @@ function cellText(html: string, rowHtml: string, index: number): string {
 
 async function getSportsReservationPaidRecords(): Promise<SportsReservationRecord[]> {
   const html = await webvpnTransport.fetchText(SPORTS_PAID_URL);
-  const $ = parse(html);
-  return $('tr[style="display:none"]').map(e => {
+  const root = parse(html);
+  return root.querySelectorAll('tr[style="display:none"]').map(e => {
     const contentRow = parse(e.innerHTML).querySelector('tbody tr');
     if (!contentRow) {
       return {
@@ -375,7 +389,7 @@ export async function getSportsReservationRecords(): Promise<
   if (tables.length === 0) {
     throw new Error('无法加载体育预约订单');
   }
-  const unpaid = root.querySelectorAll('tbody tr').map(e => {
+  const unpaid: SportsReservationRecord[] = root.querySelectorAll('tbody tr').map(e => {
     const rowHtml = e.outerHTML;
     const method = cellText(html, rowHtml, 9);
     let payId: string | undefined;
@@ -383,16 +397,22 @@ export async function getSportsReservationRecords(): Promise<
     if (method === '网上支付') {
       const payAction = e.querySelector('[onclick*="payNow"]')?.getAttribute('onclick') ?? '';
       const payRes = /payNow\('(.+?)'/.exec(payAction);
-      if (payRes) payId = payRes[1];
+      if (payRes) {
+        payId = payRes[1];
+      }
       const unsubAction =
         e.querySelector('[onclick*="unsubscribeOnline"]')?.getAttribute('onclick') ?? '';
       const unsubRes = /unsubscribeOnline\('(.+?)'/.exec(unsubAction);
-      if (unsubRes) bookId = unsubRes[1];
+      if (unsubRes) {
+        bookId = unsubRes[1];
+      }
     } else if (method === '现场支付') {
       const unsubAction =
         e.querySelector('[onclick*="unsubscribe"]')?.getAttribute('onclick') ?? '';
       const unsubRes = /unsubscribe\('(.+?)'/.exec(unsubAction);
-      if (unsubRes) bookId = unsubRes[1];
+      if (unsubRes) {
+        bookId = unsubRes[1];
+      }
     }
     const timeSpan = e.querySelector('span[time]');
     const bookTimestampString = timeSpan?.getAttribute('time');
@@ -445,7 +465,9 @@ export async function paySportsReservationLater(
   const postForm: Record<string, string> = {};
   inputs.forEach(el => {
     const name = el.getAttribute('name');
-    if (name) postForm[name] = el.getAttribute('value') ?? '';
+    if (name) {
+      postForm[name] = el.getAttribute('value') ?? '';
+    }
   });
   postForm.channelId = '0101';
   const payPage = await webvpnTransport.fetchText(SPORTS_PAYMENT_ACTION_URL, {

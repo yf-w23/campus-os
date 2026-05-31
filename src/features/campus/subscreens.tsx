@@ -10,14 +10,15 @@ import {
   DORM_ELE_URL,
   DORM_HEALTH_URL,
 } from '../../services/campus/campusEndpoints';
+import {uiImages} from '../../app/assets/uiImages';
 
 export {GradesScreen} from './GradesScreen';
 export {ClassroomScreen} from './ClassroomScreen';
 export {PEtestScreen} from './PEtestScreen';
 
 const icons = {
-  dormitory: require('../../assets/campus/dormitory.png'),
-  reservation: require('../../assets/campus/reservation.png'),
+  dormitory: uiImages.campusDormitory,
+  reservation: uiImages.campusReservation,
 };
 
 export function DormitoryScreen({navigation}: EntryScreenProps<'CampusDormitory'>) {

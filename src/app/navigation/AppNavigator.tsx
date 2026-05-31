@@ -22,6 +22,8 @@ import {
 } from '../../features/campus/subscreens';
 import {EleBalanceScreen} from '../../features/campus/EleBalanceScreen';
 import {EleRechargeScreen} from '../../features/campus/EleRechargeScreen';
+import {CampusFinanceScreen} from '../../features/campus/CampusFinanceScreen';
+import {CampusNetworkScreen} from '../../features/campus/CampusNetworkScreen';
 import {SportsScreen} from '../../features/campus/SportsScreen';
 import {SportsDetailScreen} from '../../features/campus/SportsDetailScreen';
 import {SportsBookScreen} from '../../features/campus/SportsBookScreen';
@@ -36,6 +38,7 @@ import {useSelector} from 'react-redux';
 import {selectAuth} from '../../state/selectors';
 import {colors} from '../theme';
 import {RootStackParamList, RootTabParamList} from './types';
+import {uiImages} from '../assets/uiImages';
 
 /**
  * 全局 Navigation 主题 — 用 app 浅色调色板覆盖 RN-Nav 默认色，
@@ -98,7 +101,7 @@ function MainTabs() {
           tabBarIcon: ({focused}) => (
             <TabIcon
               focused={focused}
-              source={require('../../assets/tabs/home.png')}
+              source={uiImages.home}
               label={t.tabs.home}
             />
           ),
@@ -111,7 +114,7 @@ function MainTabs() {
           tabBarIcon: ({focused}) => (
             <TabIcon
               focused={focused}
-              source={require('../../assets/tabs/learning.png')}
+              source={uiImages.learning}
               label={t.tabs.learning}
             />
           ),
@@ -124,7 +127,7 @@ function MainTabs() {
           tabBarIcon: ({focused}) => (
             <TabIcon
               focused={focused}
-              source={require('../../assets/tabs/schedule.png')}
+              source={uiImages.schedule}
               label={t.tabs.schedule}
             />
           ),
@@ -137,7 +140,7 @@ function MainTabs() {
           tabBarIcon: ({focused}) => (
             <TabIcon
               focused={focused}
-              source={require('../../assets/tabs/campus.png')}
+              source={uiImages.campus}
               label={t.tabs.campus}
             />
           ),
@@ -150,7 +153,7 @@ function MainTabs() {
           tabBarIcon: ({focused}) => (
             <TabIcon
               focused={focused}
-              source={require('../../assets/tabs/ai.png')}
+              source={uiImages.ai}
               label={t.tabs.ai}
             />
           ),
@@ -163,7 +166,7 @@ function MainTabs() {
           tabBarIcon: ({focused}) => (
             <TabIcon
               focused={focused}
-              source={require('../../assets/tabs/settings.png')}
+              source={uiImages.settings}
               label={t.tabs.settings}
             />
           ),
@@ -201,6 +204,8 @@ export function AppNavigator() {
             <Stack.Screen name="CampusGrades" component={GradesScreen} />
             <Stack.Screen name="CampusPEtest" component={PEtestScreen} />
             <Stack.Screen name="CampusDormitory" component={DormitoryScreen} />
+            <Stack.Screen name="CampusFinance" component={CampusFinanceScreen} />
+            <Stack.Screen name="CampusNetwork" component={CampusNetworkScreen} />
             <Stack.Screen name="CampusEleBalance" component={EleBalanceScreen} />
             <Stack.Screen name="CampusEleRecharge" component={EleRechargeScreen} />
             <Stack.Screen name="CampusReservation" component={ReservationScreen} />

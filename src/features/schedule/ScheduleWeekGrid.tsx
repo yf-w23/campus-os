@@ -1,4 +1,4 @@
-import React, {useMemo, useState} from 'react';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {
   Dimensions,
   LayoutChangeEvent,
@@ -17,6 +17,8 @@ import {ScheduleEventBlock} from './ScheduleEventBlock';
 const TIME_LABEL_WIDTH = 40;
 const TIME_AXIS_WIDTH = 8;
 const HOUR_SPAN = 13.75;
+const MIN_DAY_WIDTH = 82;
+const MIN_HOUR_HEIGHT = 48;
 
 interface Props {
   weekDates: string[];
@@ -36,13 +38,21 @@ export function ScheduleWeekGrid({
   selectedDate,
 }: Props) {
   const [gridHeight, setGridHeight] = useState(0);
-  const [bodyWidth, setBodyWidth] = useState(0);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const headerScrollRef = useRef<ScrollView>(null);
+  const bodyScrollRef = useRef<ScrollView>(null);
 
   const viewportH =
     gridHeight > 0 ? gridHeight : Dimensions.get('window').height * 0.52;
-  const hourHeight = viewportH / HOUR_SPAN;
+  const hourHeight = Math.max(MIN_HOUR_HEIGHT, viewportH / HOUR_SPAN);
   const minuteHeight = hourHeight / 60;
-  const unitWidth = bodyWidth > 0 ? bodyWidth / 7 : 48;
+  const gutterWidth = TIME_LABEL_WIDTH + TIME_AXIS_WIDTH;
+  const bodyViewportWidth = Math.max(0, containerWidth - gutterWidth);
+  const bodyContentWidth = Math.max(
+    bodyViewportWidth,
+    MIN_DAY_WIDTH * weekDates.length,
+  );
+  const unitWidth = bodyContentWidth / 7;
   const totalHeight = (24 - displayStartHour) * hourHeight;
 
   const today = todayLocalISO();
@@ -90,38 +100,63 @@ export function ScheduleWeekGrid({
     }
   };
 
-  const onBodyLayout = (e: LayoutChangeEvent) => {
+  const onWrapLayout = (e: LayoutChangeEvent) => {
     const w = e.nativeEvent.layout.width;
-    if (w > 0 && w !== bodyWidth) {
-      setBodyWidth(w);
+    if (w > 0 && Math.abs(w - containerWidth) > 2) {
+      setContainerWidth(w);
     }
   };
 
+  useEffect(() => {
+    const selectedIndex = weekDates.indexOf(selectedDate);
+    if (
+      selectedIndex < 0 ||
+      bodyViewportWidth <= 0 ||
+      bodyContentWidth <= bodyViewportWidth
+    ) {
+      return;
+    }
+    const centeredX =
+      selectedIndex * unitWidth - (bodyViewportWidth - unitWidth) / 2;
+    const maxX = bodyContentWidth - bodyViewportWidth;
+    const x = Math.max(0, Math.min(maxX, centeredX));
+    bodyScrollRef.current?.scrollTo({x, animated: true});
+    headerScrollRef.current?.scrollTo({x, animated: true});
+  }, [bodyContentWidth, bodyViewportWidth, selectedDate, unitWidth, weekDates]);
+
   return (
-    <View style={styles.wrap}>
+    <View style={styles.wrap} onLayout={onWrapLayout}>
       <View style={styles.frozenHeader}>
-        <View style={{width: TIME_LABEL_WIDTH + TIME_AXIS_WIDTH}} />
-        <View style={styles.dayHeaderRow}>
-          {weekDates.map((date, i) => {
-            const active = date === selectedDate;
-            const isToday = date === today;
-            return (
-              <PressableDayHeader
-                key={date}
-                label={WEEKDAY_LABELS[i]}
-                sub={date.slice(5).replace('-', '/')}
-                active={active}
-                isToday={isToday}
-                onPress={() => onDayPress(date)}
-              />
-            );
-          })}
-        </View>
+        <View style={{width: gutterWidth}} />
+        <ScrollView
+          horizontal
+          ref={headerScrollRef}
+          scrollEnabled={false}
+          showsHorizontalScrollIndicator={false}
+          style={{width: bodyViewportWidth}}>
+          <View style={[styles.dayHeaderRow, {width: bodyContentWidth}]}>
+            {weekDates.map((date, i) => {
+              const active = date === selectedDate;
+              const isToday = date === today;
+              return (
+                <PressableDayHeader
+                  key={date}
+                  label={WEEKDAY_LABELS[i]}
+                  sub={date.slice(5).replace('-', '/')}
+                  active={active}
+                  isToday={isToday}
+                  onPress={() => onDayPress(date)}
+                />
+              );
+            })}
+          </View>
+        </ScrollView>
       </View>
 
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
+        nestedScrollEnabled
         showsVerticalScrollIndicator={false}
         onLayout={onGridLayout}>
         <View style={[styles.gridRow, {height: Math.max(totalHeight, 400)}]}>
@@ -147,35 +182,48 @@ export function ScheduleWeekGrid({
             ))}
           </View>
 
-          <View
-            style={[styles.body, {height: totalHeight}]}
-            onLayout={onBodyLayout}>
-            {Array.from({length: 25 - displayStartHour}, (_, k) => displayStartHour + k).map(
-              hour => (
-                <View
-                  key={`line-${hour}`}
-                  style={[
-                    styles.hourLine,
-                    {top: (hour - displayStartHour) * hourHeight},
-                  ]}
+          <ScrollView
+            horizontal
+            ref={bodyScrollRef}
+            style={{width: bodyViewportWidth, height: totalHeight}}
+            contentContainerStyle={{width: bodyContentWidth}}
+            nestedScrollEnabled
+            showsHorizontalScrollIndicator={false}
+            scrollEventThrottle={16}
+            onScroll={e => {
+              headerScrollRef.current?.scrollTo({
+                x: e.nativeEvent.contentOffset.x,
+                animated: false,
+              });
+            }}>
+            <View style={[styles.body, {height: totalHeight, width: bodyContentWidth}]}>
+              {Array.from({length: 25 - displayStartHour}, (_, k) => displayStartHour + k).map(
+                hour => (
+                  <View
+                    key={`line-${hour}`}
+                    style={[
+                      styles.hourLine,
+                      {top: (hour - displayStartHour) * hourHeight},
+                    ]}
+                  />
+                ),
+              )}
+              {blocks.map(block => (
+                <ScheduleEventBlock
+                  key={block.key}
+                  dayIndex={block.dayIndex}
+                  begin={block.begin}
+                  end={block.end}
+                  title={block.title}
+                  location={block.location}
+                  gridHeight={minuteHeight}
+                  gridWidth={unitWidth}
+                  color={block.color}
+                  onPress={() => onBlockPress(block)}
                 />
-              ),
-            )}
-            {blocks.map(block => (
-              <ScheduleEventBlock
-                key={block.key}
-                dayIndex={block.dayIndex}
-                begin={block.begin}
-                end={block.end}
-                title={block.title}
-                location={block.location}
-                gridHeight={minuteHeight}
-                gridWidth={unitWidth}
-                color={block.color}
-                onPress={() => onBlockPress(block)}
-              />
-            ))}
-          </View>
+              ))}
+            </View>
+          </ScrollView>
         </View>
       </ScrollView>
     </View>
@@ -213,7 +261,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.borderSubtle,
   },
-  dayHeaderRow: {flex: 1, flexDirection: 'row'},
+  dayHeaderRow: {flexDirection: 'row'},
   dayCell: {flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 4},
   dayWeek: {...typography.caption, color: colors.textMuted, fontSize: 11},
   dayWeekActive: {color: colors.primary, fontWeight: '700'},

@@ -364,207 +364,209 @@ export function ScheduleScreen({navigation}: Props) {
     : learningError ?? scheduleError ?? '请先在首页同步校园数据';
 
   const syncBusy = syncing || loading;
-  const weekGridHeight = Math.min(520, Math.max(360, windowHeight * 0.44));
+  const weekGridHeight = Math.min(560, Math.max(430, windowHeight * 0.48));
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.headerArea}>
-        <ScreenHeader
-          eyebrow={t.tabs.schedule}
-          title={t.schedule.title}
-          subtitle={subtitle}
-          right={
-            <View style={styles.headerActions}>
-              <Pressable onPress={handleSync} hitSlop={8} disabled={syncBusy}>
-                <Text style={[styles.headerLink, syncBusy && styles.headerLinkDim]}>
-                  {syncBusy ? '同步中…' : '同步'}
-                </Text>
-              </Pressable>
-              <Pressable onPress={openAI} hitSlop={8}>
-                <Text style={styles.headerLink}>{t.schedule.askAi}</Text>
-              </Pressable>
-            </View>
-          }
-        />
-
-        <View style={styles.weekNav}>
-          <Pressable
-            style={[styles.weekBtn, !canGoPrev && styles.weekBtnDisabled]}
-            disabled={!canGoPrev}
-            onPress={() => {
-              if (!canGoPrev) {
-                return;
-              }
-              setUserPickedDate(false);
-              setNaturalWeekOffset(o => o - 1);
-            }}>
-            <Text style={styles.weekBtnText}>‹</Text>
-          </Pressable>
-          <Text style={styles.weekLabel}>{weekLabel}</Text>
-          <Pressable
-            style={[styles.weekBtn, !canGoNext && styles.weekBtnDisabled]}
-            disabled={!canGoNext}
-            onPress={() => {
-              if (!canGoNext) {
-                return;
-              }
-              setUserPickedDate(false);
-              setNaturalWeekOffset(o => o + 1);
-            }}>
-            <Text style={styles.weekBtnText}>›</Text>
-          </Pressable>
-          {showTodayJump ? (
-            <Pressable
-              onPress={() => {
-                setUserPickedDate(false);
-                setNaturalWeekOffset(0);
-                setSelectedDate(todayLocalISO());
-              }}
-              hitSlop={8}>
-              <Text style={styles.todayJump}>{t.schedule.backToday}</Text>
-            </Pressable>
-          ) : null}
-          <Pressable onPress={() => setModalOpen(true)} hitSlop={8}>
-            <Text style={styles.addLink}>{t.schedule.add}</Text>
-          </Pressable>
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.dayStrip}>
-          {weekDates.map(date => {
-            const active = date === selectedDate;
-            const hasDay =
-              mergeScheduleForDate(date, courses, personalEvents).length > 0;
-            return (
-              <Pressable
-                key={date}
-                style={[styles.dayChip, active && styles.dayChipActive]}
-                onPress={() => {
-                  setUserPickedDate(true);
-                  setSelectedDate(date);
-                }}>
-                <Text
-                  style={[styles.dayChipDow, active && styles.dayChipTextActive]}>
-                  {weekdayLabelForDate(date)}
-                </Text>
-                <Text
-                  style={[styles.dayChipDate, active && styles.dayChipTextActive]}>
-                  {date.slice(5)}
-                </Text>
-                {hasDay ? <View style={styles.dayDot} /> : null}
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      {learningError && !hasCourses ? (
-        <View style={styles.errorBox}>
-          <Text style={styles.errorText}>{learningError}</Text>
-        </View>
-      ) : null}
-
-      {gridBlocks.length > 0 ? (
-        <View style={[styles.gridFlex, {height: weekGridHeight}]}>
-          <ScheduleWeekGrid
-            weekDates={weekDates}
-            blocks={gridBlocks}
-            displayStartHour={displayStartHour}
-            selectedDate={selectedDate}
-            onDayPress={date => {
-              setUserPickedDate(true);
-              setSelectedDate(date);
-            }}
-            onBlockPress={onBlockPress}
-          />
-        </View>
-      ) : null}
-
       <ScrollView
-        style={styles.listScroll}
-        contentContainerStyle={styles.listContent}
+        style={styles.pageScroll}
+        contentContainerStyle={styles.pageContent}
         showsVerticalScrollIndicator={false}>
-        <Text style={styles.listHeading}>
-          {weekdayLabelForDate(selectedDate)} · {selectedDate}
-        </Text>
-        {dayItems.length === 0 ? (
-          <>
-            <EmptyState
-              title={
-                weekHasItems
-                  ? `${weekdayLabelForDate(selectedDate)}暂无课程`
-                  : t.schedule.emptyWeek
-              }
-              description={
-                hasCourses
-                  ? weekCourses.length > 0
-                    ? '请点击上方有圆点的日期（如周五）查看课程'
-                    : '课表日期与本周不匹配，可切换上一周/下一周，或重新同步'
-                  : '请打开首页点击同步，或在此点击「同步」拉取课表'
-              }
-            />
-            {weekCourses.length > 0 ? (
-              <View style={styles.weekOverview}>
-                <Text style={styles.weekOverviewTitle}>本周其它安排</Text>
-                {weekDates.map(date => {
-                  const items = mergeScheduleForDate(
-                    date,
-                    courses,
-                    personalEvents,
-                  );
-                  if (!items.length) {
-                    return null;
-                  }
-                  return (
-                    <View key={date} style={styles.weekDayBlock}>
-                      <Pressable
-                        onPress={() => {
-                          setUserPickedDate(true);
-                          setSelectedDate(date);
-                        }}>
-                        <Text style={styles.weekDayHeading}>
-                          {weekdayLabelForDate(date)} · {date.slice(5)}
-                        </Text>
-                      </Pressable>
-                      {items.map((item, idx) => (
-                        <Text key={`${date}-${idx}`} style={styles.weekDayLine}>
-                          {item.event.startTime}–{item.event.endTime}{' '}
-                          {item.event.title}
-                        </Text>
-                      ))}
-                    </View>
-                  );
-                })}
+        <View style={styles.headerArea}>
+          <ScreenHeader
+            eyebrow={t.tabs.schedule}
+            title={t.schedule.title}
+            subtitle={subtitle}
+            right={
+              <View style={styles.headerActions}>
+                <Pressable onPress={handleSync} hitSlop={8} disabled={syncBusy}>
+                  <Text
+                    style={[styles.headerLink, syncBusy && styles.headerLinkDim]}>
+                    {syncBusy ? '同步中…' : '同步'}
+                  </Text>
+                </Pressable>
+                <Pressable onPress={openAI} hitSlop={8}>
+                  <Text style={styles.headerLink}>{t.schedule.askAi}</Text>
+                </Pressable>
               </View>
-            ) : null}
-          </>
-        ) : (
-          <View style={styles.todayCard}>
-            {dayItems.map((item, idx) => (
-              <View key={`${item.kind}-${item.event.id}-${idx}`}>
-                {idx > 0 ? <View style={styles.scheduleDivider} /> : null}
-                <ScheduleRow
-                  item={item}
-                  onDelete={
-                    item.kind === 'personal'
-                      ? () =>
-                          handleDelete(item.event.id, item.event.title)
-                      : undefined
-                  }
-                />
-              </View>
-            ))}
-          </View>
-        )}
-        {!weekHasItems && !hasCourses ? (
-          <PrimaryButton
-            label={syncBusy ? '同步中…' : '同步课表'}
-            onPress={handleSync}
-            disabled={syncBusy}
+            }
           />
+
+          <View style={styles.weekNav}>
+            <Pressable
+              style={[styles.weekBtn, !canGoPrev && styles.weekBtnDisabled]}
+              disabled={!canGoPrev}
+              onPress={() => {
+                if (!canGoPrev) {
+                  return;
+                }
+                setUserPickedDate(false);
+                setNaturalWeekOffset(o => o - 1);
+              }}>
+              <Text style={styles.weekBtnText}>‹</Text>
+            </Pressable>
+            <Text style={styles.weekLabel}>{weekLabel}</Text>
+            <Pressable
+              style={[styles.weekBtn, !canGoNext && styles.weekBtnDisabled]}
+              disabled={!canGoNext}
+              onPress={() => {
+                if (!canGoNext) {
+                  return;
+                }
+                setUserPickedDate(false);
+                setNaturalWeekOffset(o => o + 1);
+              }}>
+              <Text style={styles.weekBtnText}>›</Text>
+            </Pressable>
+            {showTodayJump ? (
+              <Pressable
+                onPress={() => {
+                  setUserPickedDate(false);
+                  setNaturalWeekOffset(0);
+                  setSelectedDate(todayLocalISO());
+                }}
+                hitSlop={8}>
+                <Text style={styles.todayJump}>{t.schedule.backToday}</Text>
+              </Pressable>
+            ) : null}
+            <Pressable onPress={() => setModalOpen(true)} hitSlop={8}>
+              <Text style={styles.addLink}>{t.schedule.add}</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.dayStrip}>
+            {weekDates.map(date => {
+              const active = date === selectedDate;
+              const hasDay =
+                mergeScheduleForDate(date, courses, personalEvents).length > 0;
+              return (
+                <Pressable
+                  key={date}
+                  style={[styles.dayChip, active && styles.dayChipActive]}
+                  onPress={() => {
+                    setUserPickedDate(true);
+                    setSelectedDate(date);
+                  }}>
+                  <Text
+                    style={[styles.dayChipDow, active && styles.dayChipTextActive]}>
+                    {weekdayLabelForDate(date)}
+                  </Text>
+                  <Text
+                    style={[styles.dayChipDate, active && styles.dayChipTextActive]}>
+                    {date.slice(5)}
+                  </Text>
+                  {hasDay ? <View style={styles.dayDot} /> : null}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        {learningError && !hasCourses ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{learningError}</Text>
+          </View>
         ) : null}
+
+        {gridBlocks.length > 0 ? (
+          <View style={[styles.gridFlex, {height: weekGridHeight}]}>
+            <ScheduleWeekGrid
+              weekDates={weekDates}
+              blocks={gridBlocks}
+              displayStartHour={displayStartHour}
+              selectedDate={selectedDate}
+              onDayPress={date => {
+                setUserPickedDate(true);
+                setSelectedDate(date);
+              }}
+              onBlockPress={onBlockPress}
+            />
+          </View>
+        ) : null}
+
+        <View style={styles.listContent}>
+          <Text style={styles.listHeading}>
+            {weekdayLabelForDate(selectedDate)} · {selectedDate}
+          </Text>
+          {dayItems.length === 0 ? (
+            <>
+              <EmptyState
+                title={
+                  weekHasItems
+                    ? `${weekdayLabelForDate(selectedDate)}暂无课程`
+                    : t.schedule.emptyWeek
+                }
+                description={
+                  hasCourses
+                    ? weekCourses.length > 0
+                      ? '请点击上方有圆点的日期（如周五）查看课程'
+                      : '课表日期与本周不匹配，可切换上一周/下一周，或重新同步'
+                    : '请打开首页点击同步，或在此点击「同步」拉取课表'
+                }
+              />
+              {weekCourses.length > 0 ? (
+                <View style={styles.weekOverview}>
+                  <Text style={styles.weekOverviewTitle}>本周其它安排</Text>
+                  {weekDates.map(date => {
+                    const items = mergeScheduleForDate(
+                      date,
+                      courses,
+                      personalEvents,
+                    );
+                    if (!items.length) {
+                      return null;
+                    }
+                    return (
+                      <View key={date} style={styles.weekDayBlock}>
+                        <Pressable
+                          onPress={() => {
+                            setUserPickedDate(true);
+                            setSelectedDate(date);
+                          }}>
+                          <Text style={styles.weekDayHeading}>
+                            {weekdayLabelForDate(date)} · {date.slice(5)}
+                          </Text>
+                        </Pressable>
+                        {items.map((item, idx) => (
+                          <Text key={`${date}-${idx}`} style={styles.weekDayLine}>
+                            {item.event.startTime}–{item.event.endTime}{' '}
+                            {item.event.title}
+                          </Text>
+                        ))}
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : null}
+            </>
+          ) : (
+            <View style={styles.todayCard}>
+              {dayItems.map((item, idx) => (
+                <View key={`${item.kind}-${item.event.id}-${idx}`}>
+                  {idx > 0 ? <View style={styles.scheduleDivider} /> : null}
+                  <ScheduleRow
+                    item={item}
+                    onDelete={
+                      item.kind === 'personal'
+                        ? () => handleDelete(item.event.id, item.event.title)
+                        : undefined
+                    }
+                  />
+                </View>
+              ))}
+            </View>
+          )}
+          {!weekHasItems && !hasCourses ? (
+            <PrimaryButton
+              label={syncBusy ? '同步中…' : '同步课表'}
+              onPress={handleSync}
+              disabled={syncBusy}
+            />
+          ) : null}
+        </View>
       </ScrollView>
 
       <Modal visible={modalOpen} animationType="slide" transparent>
@@ -632,6 +634,8 @@ export function ScheduleScreen({navigation}: Props) {
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
+  pageScroll: {flex: 1},
+  pageContent: {paddingBottom: 112},
   headerArea: {paddingHorizontal: spacing.lg, paddingTop: spacing.sm},
   headerActions: {flexDirection: 'row', gap: spacing.md, alignItems: 'center'},
   headerLink: {...typography.caption, color: colors.primary, fontWeight: '600'},
@@ -684,10 +688,9 @@ const styles = StyleSheet.create({
   errorText: {...typography.caption, color: colors.error},
   gridFlex: {
     paddingHorizontal: spacing.sm,
-    marginBottom: spacing.md,
+    marginBottom: spacing.lg,
     overflow: 'hidden',
   },
-  listScroll: {flex: 1},
   listContent: {paddingHorizontal: spacing.lg, paddingBottom: spacing.xl},
   listHeading: {
     ...typography.label,

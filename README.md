@@ -6,9 +6,9 @@
 [![License](https://img.shields.io/badge/license-MIT-blue)](#许可)
 [![Platform](https://img.shields.io/badge/platform-Android%207%2B-success)](#安装)
 
-把课表、作业、成绩、教室、电费、图书馆座位和 AI 助手揉到一个 App 里。完全 native UI，不依赖任何业务后端 —— 你的账号密码和 API Key 只存在你手机的安全存储里。
+把课表、作业、成绩、教室、电费、校园卡、校园网、图书馆座位和 AI 助手揉到一个 App 里。完全 native UI，不依赖任何业务后端 —— 你的账号密码和 API Key 只存在你手机的安全存储里。
 
-**当前版本：v0.3.0** · [下载 APK](https://github.com/yf-w23/campus-os/releases/latest)
+**当前版本：v0.4.0** · [下载 APK](https://github.com/yf-w23/campus-os/releases/latest)
 
 ---
 
@@ -18,7 +18,7 @@
 
 [**Releases → 最新版本**](https://github.com/yf-w23/campus-os/releases/latest)
 
-下载 `campus-os-v0.3.0-android-arm64.apk`（约 65 MB），传到 Android 手机安装即可。
+下载 `campus-os-v0.4.0-android-arm64.apk`（约 78 MB），传到 Android 手机安装即可。
 
 - 系统要求：Android 7+（API 24+）
 - 架构：arm64-v8a（2018 年后绝大多数手机都是；32 位 / x86 模拟器暂不支持）
@@ -67,13 +67,14 @@ npm run android           # 另开终端编译 debug 包
 - 未读通知统计
 - 一键重新同步校园数据
 
-### 日程 `schedule`（v0.3.0 新增）
+### 日程 `schedule`（v0.3.0 新增，v0.4.0 优化）
 
 - **周视图**：自然周切换（周一–周日），有课日期带圆点提示
 - **课表数据**：与首页「今日课表」相同，来自 `learning.snapshot.schedule`（教务 JSONP `bks_jxrl_all`）
 - 周六/周日无课时，打开会自动选中本周内最近有课的一天（如周五）
 - **个人备忘**：本地添加/长按删除；与教务课表合并展示
 - **课表缓存**：成功同步后写入本地；同步失败时保留上次课表，避免「昨天有课今天全空」
+- **手机可读性**：周网格支持横向滚动，课程块不再被 7 列硬挤压；下方当日详情跟随整页滚动
 - 右上角「同步」= 与首页相同的 `syncCampusData`；也可「问 AI」跳转助手
 
 ### 学习 `learning`
@@ -94,6 +95,8 @@ npm run android           # 另开终端编译 debug 包
 | 教室查询 | `services/campus/classroom.ts` | 按教学楼 → 周次 → 周一–周日选日查节次占用；5 色图例：空闲 / 上课 / 考试 / 借用 / 停用 |
 | 体测成绩 | `services/campus/petest.ts` | JSON 解析体测各项分数 + 自动算参考成绩 |
 | 宿舍 | `services/campus/electricity.ts` 等 | 电费余额（只读）+ 电费充值（需确认）+ 健康打卡 |
+| 校园财务 | `services/campus/campusCard.ts` | 校园卡余额、卡状态与近期流水查询；加密响应解密后展示 |
+| 校园网 | `services/campus/network.ts` | 校园网余额、账号信息、在线设备；验证码登录可在 App 内完成 |
 | 图书馆座位 | `services/campus/library.ts` | 4 层导航：馆 → 楼层 → 分区 → 座位（可预约，需确认）|
 | 研读间预约 | `services/campus/library.ts` | 浏览研讨间类型 + 全部资源 |
 
@@ -104,8 +107,8 @@ npm run android           # 另开终端编译 debug 包
 - 兼容 OpenAI 协议（DeepSeek / 智谱 / Kimi / Doubao 等）
 - **多会话**：列表、新建、继续历史、删除；对话与偏好存 AsyncStorage
 - **工具调用（Function Calling）**：
-  - **只读**：今日概览、作业列表/详情、成绩、电费、图书馆空位、**按周课表**（`get_week_schedule`）、个人备忘列表等
-  - **需二次确认**：预约图书馆座位、电费充值、**添加/删除个人备忘**
+  - **只读**：今日概览、作业列表/详情、成绩、电费、校园卡余额/流水、校园网余额/账号/在线设备、图书馆空位、**按周课表**（`get_week_schedule`）、个人备忘列表等
+  - **需二次确认**：预约图书馆座位、电费充值、注销校园网设备、**添加/删除个人备忘**
 - 系统提示注入真实当前日期；课表工具按 `YYYY-MM-DD` 与首页逻辑一致筛选
 - Markdown 渲染；无流式时整体读取，保证有 Key 时稳定出结果
 
@@ -118,14 +121,16 @@ npm run android           # 另开终端编译 debug 包
 
 ---
 
-## v0.3.0 更新摘要
+## v0.4.0 更新摘要
 
 | 项目 | 说明 |
 |---|---|
-| 日程 Tab | 周视图 + 备忘 + 与首页同源课表 |
-| 课表同步 | legacy JSONP 优先；失败保留缓存与内存中的课表 |
-| AI | `get_week_schedule`、`add/remove_personal_event` 等工具 |
-| Release | [v0.3.0](https://github.com/yf-w23/campus-os/releases/tag/v0.3.0) 附 arm64 APK |
+| 校园入口 | 新增「校园财务」「校园网」原生入口，并统一 `campusOS_ui` 图片资源路径 |
+| 校园卡 | 修复余额接口加密响应解析；支持余额、卡状态、近期流水查询 |
+| 校园网 | 余额 / 账号 / 在线设备查询接入 App 内验证码登录，不再要求跳网页重登 |
+| 日程 | 手机端周课表横向滚动与高度优化，课程标题和地点更容易读全 |
+| AI | 校园卡、校园网能力纳入工具调用；高风险事务仍受限制或需二次确认 |
+| Release | [v0.4.0](https://github.com/yf-w23/campus-os/releases/tag/v0.4.0) 附 arm64 APK |
 
 ---
 
@@ -208,6 +213,7 @@ clearCookies
 - 仅支持 Android arm64-v8a；iOS 工程在仓库里但未在真机验证
 - 日程周网格依赖已同步的扁平课表；学期制 thu-info 分段课表为增强项，失败时仍可用 legacy 课表
 - 图书馆**座位**预约已实现；研讨间只读；体育场馆入口暂未开放
+- 校园卡动态「紫荆校园码」、充值、挂失、解挂、限额修改等高风险能力暂未接入；当前只做余额和流水查询
 - 设备指纹信任过期时可能需重新 2FA
 - 课程评估、培养方案、选课等 thu-info-app 有的功能暂未做
 
@@ -230,7 +236,7 @@ $env:GRADLE_USER_HOME = "$env:USERPROFILE\.gradle"
 cd android
 .\gradlew assembleRelease
 # 产物: android/app/build/outputs/apk/release/app-release.apk
-# 建议复制为 campus-os-v0.3.0-android-arm64.apk 再上传到 GitHub Release
+# 建议复制为 campus-os-v0.4.0-android-arm64.apk 再上传到 GitHub Release
 ```
 
 ---

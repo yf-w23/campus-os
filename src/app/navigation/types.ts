@@ -21,6 +21,8 @@ export type RootStackParamList = {
   CampusGrades: undefined;
   CampusPEtest: undefined;
   CampusDormitory: undefined;
+  CampusFinance: undefined;
+  CampusNetwork: undefined;
   /** 电费余额（native）*/
   CampusEleBalance: undefined;
   /** 电费充值（native）*/

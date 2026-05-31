@@ -1,6 +1,6 @@
 {
   "name": "CampusOS",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "private": true,
   "packageManager": "pnpm@9.0.0",
   "scripts": {
@@ -20,9 +20,12 @@
     "@react-navigation/native": "^7.2.5",
     "@react-navigation/native-stack": "^7.16.0",
     "@reduxjs/toolkit": "^2.12.0",
+    "@types/crypto-js": "^4.2.2",
     "base-64": "^1.0.0",
     "cheerio": "^1.2.0",
+    "crypto-js": "^4.2.0",
     "entities": "^8.0.0",
+    "jsencrypt": "^3.5.4",
     "node-html-parser": "^6.1.13",
     "react": "18.3.1",
     "react-native": "0.76.9",

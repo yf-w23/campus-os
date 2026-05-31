@@ -2,6 +2,7 @@ import React from 'react';
 import {
   ActivityIndicator,
   Image,
+  ImageSourcePropType,
   Platform,
   Pressable,
   StyleSheet,
@@ -12,7 +13,7 @@ import {colors, radii, spacing, typography} from '../../../app/theme';
 
 interface TabIconProps {
   focused: boolean;
-  source: number;
+  source: ImageSourcePropType;
   label: string;
 }
 

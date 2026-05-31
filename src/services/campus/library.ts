@@ -19,6 +19,7 @@
 import {webvpnTransport} from '../webvpn/transport';
 import {tsinghuaAuthService} from '../auth/tsinghuaAuth';
 import {SUBSYSTEM_YYFWID} from '../webvpn/constants';
+import {childText, loadHtml} from './htmlSelect';
 
 const WEBVPN_BASE = 'https://webvpn.tsinghua.edu.cn';
 
@@ -40,6 +41,11 @@ export const LIBRARY_BOOKING_RECORDS_URL = `${WEBVPN_BASE}/https/${LIB_TOKEN}/us
 export const LIBRARY_ROOM_BOOKING_USER_INFO_URL = `${WEBVPN_BASE}/https/${LIB_ROOM_TOKEN}/ic-web/auth/userInfo`;
 export const LIBRARY_ROOM_BOOKING_ROOM_INFO_URL = `${WEBVPN_BASE}/https/${LIB_ROOM_TOKEN}/ic-web/roomDevice/roomInfos`;
 export const LIBRARY_ROOM_BOOKING_RESOURCE_LIST_URL = `${WEBVPN_BASE}/https/${LIB_ROOM_TOKEN}/ic-web/reserve?sysKind=1`;
+export const LIBRARY_FUZZY_SEARCH_ID_URL = `${WEBVPN_BASE}/https/${LIB_ROOM_TOKEN}/ic-web/account/getMembers?page=1&pageNum=10&key=`;
+export const LIBRARY_ROOM_BOOKING_ACTION_URL = `${WEBVPN_BASE}/https/${LIB_ROOM_TOKEN}/ic-web/reserve`;
+export const LIBRARY_ROOM_BOOKING_RECORD_URL = `${WEBVPN_BASE}/https/${LIB_ROOM_TOKEN}/ic-web/reserve/resvInfo?needStatus=8454&orderKey=gmt_create&orderModel=desc`;
+export const LIBRARY_ROOM_CANCEL_BOOKING_URL = `${WEBVPN_BASE}/https/${LIB_ROOM_TOKEN}/ic-web/reserve/delete`;
+export const LIBRARY_ROOM_UPDATE_EMAIL_URL = `${WEBVPN_BASE}/https/${LIB_ROOM_TOKEN}/ic-web/account/update`;
 
 // =============================================================
 // 日期工具：路径上的格式是 YYYY-MM-DD
@@ -117,6 +123,14 @@ export interface LibrarySeat {
   type: number;
 }
 
+export interface LibraryBookingRecord {
+  id: string;
+  pos: string;
+  time: string;
+  status: string;
+  delId?: string;
+}
+
 interface LibraryDay {
   day: string; // YYYY-MM-DD
   startTime: string; // HH:MM
@@ -132,7 +146,9 @@ interface LibraryDay {
 let libraryAccessEnsured = false;
 
 async function ensureLibraryAccess(force = false): Promise<void> {
-  if (libraryAccessEnsured && !force) return;
+  if (libraryAccessEnsured && !force) {
+    return;
+  }
   const creds = await tsinghuaAuthService.hydrateCredentials();
   if (!creds) {
     throw new Error('未登录，无法访问图书馆服务');
@@ -194,7 +210,9 @@ export async function getLibraryList(): Promise<Library[]> {
   await ensureLibraryAccess();
   return withLibRetry(async () => {
     const list = await libFetchList<any[]>(LIBRARY_LIST_URL);
-    if (!Array.isArray(list)) return [];
+    if (!Array.isArray(list)) {
+      return [];
+    }
     return list.map(n => ({
       id: Number(n.id),
       zhName: String(n.name ?? ''),
@@ -221,7 +239,9 @@ export async function getLibraryFloorList(
   return withLibRetry(async () => {
     const root = await libFetchList<{childArea?: any[]}>(url);
     const rawFloors = root?.childArea ?? [];
-    if (!Array.isArray(rawFloors)) return [];
+    if (!Array.isArray(rawFloors)) {
+      return [];
+    }
     return await Promise.all(
       rawFloors.map(async (n: any): Promise<LibraryFloor> => {
         const floor: LibraryFloor = {
@@ -236,7 +256,9 @@ export async function getLibraryFloorList(
           available: 0,
         };
         // 不开放的楼层不再 fetch（避免 500 / 401）
-        if (!floor.valid) return floor;
+        if (!floor.valid) {
+          return floor;
+        }
         try {
           const sections = await getLibrarySectionList(floor.id, dateChoice);
           for (const s of sections) {
@@ -268,7 +290,9 @@ export async function getLibrarySectionList(
   return withLibRetry(async () => {
     const root = await libFetchList<{childArea?: any[]}>(url);
     const raw = root?.childArea ?? [];
-    if (!Array.isArray(raw)) return [];
+    if (!Array.isArray(raw)) {
+      return [];
+    }
     return raw.map(n => {
       const total = Number(n.TotalCount ?? 0);
       const unavail = Number(n.UnavailableSpace ?? 0);
@@ -339,9 +363,11 @@ export async function getLibrarySeatList(
           ? currentTimeOrLater(dayInfo.startTime)
           : dayInfo.startTime,
         endTime: dayInfo.endTime,
-      });
+    });
     const list = await libFetchList<any[]>(url);
-    if (!Array.isArray(list)) return [];
+    if (!Array.isArray(list)) {
+      return [];
+    }
     return list.map((n: any) => ({
       id: Number(n.id ?? 0),
       zhName: String(n.name ?? `#${n.id ?? ''}`),
@@ -414,7 +440,9 @@ export async function bookLibrarySeat(
 ): Promise<BookResult> {
   await ensureLibraryAccess();
   const creds = await tsinghuaAuthService.hydrateCredentials();
-  if (!creds) throw new Error('未登录，无法预约座位');
+  if (!creds) {
+    throw new Error('未登录，无法预约座位');
+  }
   const dayInfo = await getLibraryDay(sectionId, dateChoice);
   const token = await getLibraryAccessToken();
   const url = `${LIBRARY_BOOK_URL_PREFIX}${seat.id}${LIBRARY_BOOK_URL_SUFFIX}`;
@@ -438,6 +466,32 @@ export async function bookLibrarySeat(
   return {status, msg};
 }
 
+export async function getLibraryBookingRecords(): Promise<LibraryBookingRecord[]> {
+  await ensureLibraryAccess();
+  return withLibRetry(async () => {
+    await getLibraryAccessToken();
+    const html = await webvpnTransport.fetchText(LIBRARY_BOOKING_RECORDS_URL);
+    const $ = loadHtml(html);
+    const rows = $('tbody tr').toArray();
+    const records = rows.map(row => {
+      const delOnclick =
+        row.querySelector('[onclick*="menuDel"]')?.getAttribute('onclick') ?? '';
+      const delMatch = /menuDel\('(.+?)'/.exec(delOnclick);
+      return {
+        id: childText(row, 3),
+        pos: childText(row, 5),
+        time: childText(row, 7),
+        status: childText(row, 11),
+        delId: delMatch?.[1],
+      };
+    });
+    if (records.length === 0 && !html.includes('tbody')) {
+      throw new Error('未能加载图书馆预约记录');
+    }
+    return records;
+  });
+}
+
 /**
  * 取消已预约。POST api.php/profile/books/{bookingId}
  *   body: {userid, access_token}
@@ -447,7 +501,9 @@ export async function cancelLibraryBooking(
 ): Promise<BookResult> {
   await ensureLibraryAccess();
   const creds = await tsinghuaAuthService.hydrateCredentials();
-  if (!creds) throw new Error('未登录');
+  if (!creds) {
+    throw new Error('未登录');
+  }
   const token = await getLibraryAccessToken();
   const url = `${LIBRARY_CANCEL_BOOKING_URL_PREFIX}${bookingId}`;
   const text = await webvpnTransport.fetchText(url, {
@@ -504,6 +560,25 @@ export interface LibRoomRes {
   usage: LibRoomUsage[];
 }
 
+export interface LibFuzzySearchResult {
+  id: number;
+  label: string;
+  department: string;
+}
+
+export interface LibRoomBookRecord {
+  uuid: string;
+  rsvId: number;
+  owner: string;
+  ownerId: string;
+  date: string;
+  begin: Date;
+  end: Date;
+  devName: string;
+  kindName: string;
+  members: {name: string; userId: string}[];
+}
+
 let cabAccNo = -1;
 let cabLoginEnsured = false;
 
@@ -529,7 +604,9 @@ async function cabFetch(url: string, jsonBody?: Record<string, unknown>): Promis
 }
 
 async function ensureCabLogin(force = false): Promise<void> {
-  if (cabLoginEnsured && !force) return;
+  if (cabLoginEnsured && !force) {
+    return;
+  }
   const creds = await tsinghuaAuthService.hydrateCredentials();
   if (!creds) {
     throw new Error('未登录，无法访问研讨间预约');
@@ -599,7 +676,9 @@ export async function getLibraryRoomBookingInfoList(): Promise<LibRoomInfo[]> {
   return withCabRetry(async () => {
     await assureCabSession();
     const data = (await cabFetch(LIBRARY_ROOM_BOOKING_ROOM_INFO_URL)) as any[];
-    if (!Array.isArray(data)) return [];
+    if (!Array.isArray(data)) {
+      return [];
+    }
     return data.map(item => ({
       kindId: Number(item.kindId),
       kindName: String(item.kindName ?? ''),
@@ -622,7 +701,9 @@ export async function getLibraryRoomBookingResourceList(
     const data = (await cabFetch(
       `${LIBRARY_ROOM_BOOKING_RESOURCE_LIST_URL}&resvDates=${dateYmd}&kindIds=${kindId}`,
     )) as any[];
-    if (!Array.isArray(data)) return [];
+    if (!Array.isArray(data)) {
+      return [];
+    }
     return data.map(item => ({
       devId: Number(item.devId),
       devName: String(item.devName ?? ''),
@@ -652,17 +733,111 @@ export async function getLibraryRoomBookingResourceList(
   });
 }
 
+export async function fuzzySearchLibraryId(
+  keyword: string,
+): Promise<LibFuzzySearchResult[]> {
+  return withCabRetry(async () => {
+    await assureCabSession();
+    const data = (await cabFetch(
+      LIBRARY_FUZZY_SEARCH_ID_URL + encodeURIComponent(keyword),
+    )) as any[];
+    if (!Array.isArray(data)) {
+      return [];
+    }
+    return data.map(item => ({
+      id: Number(item.accNo),
+      label: String(item.logonName ?? ''),
+      department: String(item.deptName ?? ''),
+    }));
+  });
+}
+
+export async function bookLibraryRoom(input: {
+  devId: number;
+  start: string;
+  end: string;
+  memberAccNos?: number[];
+}): Promise<{ok: boolean; message: string}> {
+  return withCabRetry(async () => {
+    await assureCabSession();
+    await cabFetch(LIBRARY_ROOM_BOOKING_ACTION_URL, {
+      sysKind: 1,
+      appAccNo: cabAccNo,
+      memberKind: 1,
+      resvBeginTime: input.start,
+      resvEndTime: input.end,
+      testName: '',
+      resvKind: 2,
+      resvProperty: 0,
+      appUrl: '',
+      resvMember: input.memberAccNos ?? [],
+      resvDev: [input.devId],
+      memo: '',
+      captcha: '',
+      addServices: [],
+    });
+    return {ok: true, message: '研读间预约已提交'};
+  });
+}
+
+export async function getLibraryRoomBookingRecord(): Promise<LibRoomBookRecord[]> {
+  return withCabRetry(async () => {
+    await assureCabSession();
+    const begin = new Date();
+    const end = new Date();
+    end.setDate(begin.getDate() + 6);
+    const beginDate = `${begin.getFullYear()}-${pad(begin.getMonth() + 1)}-${pad(
+      begin.getDate(),
+    )}`;
+    const endDate = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(
+      end.getDate(),
+    )}`;
+    const data = (await cabFetch(
+      `${LIBRARY_ROOM_BOOKING_RECORD_URL}&beginDate=${beginDate}&endDate=${endDate}`,
+    )) as any[];
+    if (!Array.isArray(data)) {
+      return [];
+    }
+    return data.map(item => {
+      const dev = item.resvDevInfoList?.[0] ?? {};
+      return {
+        uuid: String(item.uuid ?? ''),
+        rsvId: Number(item.resvId ?? 0),
+        owner: String(item.resvName ?? ''),
+        ownerId: String(item.logonName ?? ''),
+        date: String(item.resvDate ?? ''),
+        begin: new Date(item.resvBeginTime),
+        end: new Date(item.resvEndTime),
+        devName: String(dev.devName ?? ''),
+        kindName: String(dev.kindName ?? ''),
+        members: (item.resvMemberInfoList ?? []).map((member: any) => ({
+          name: String(member.trueName ?? ''),
+          userId: String(member.logonName ?? ''),
+        })),
+      };
+    });
+  });
+}
+
+export async function cancelLibraryRoomBooking(
+  uuid: string,
+): Promise<{ok: boolean; message: string}> {
+  return withCabRetry(async () => {
+    await assureCabSession();
+    await cabFetch(LIBRARY_ROOM_CANCEL_BOOKING_URL, {uuid});
+    return {ok: true, message: '研读间预约已取消'};
+  });
+}
+
 export function formatLibRoomDateYmd(offsetDays: number): string {
   const d = new Date();
   d.setDate(d.getDate() + offsetDays);
-  const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
 }
 
 export function formatLibRoomDateIso(offsetDays: number): string {
   const d = new Date();
   d.setDate(d.getDate() + offsetDays);
-  const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 

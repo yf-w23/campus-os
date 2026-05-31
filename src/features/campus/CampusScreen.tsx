@@ -12,6 +12,7 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {colors, radii, spacing, typography} from '../../app/theme';
 import {ScreenHeader} from '../common/components/Ui';
 import {RootStackParamList} from '../../app/navigation/types';
+import {uiImages} from '../../app/assets/uiImages';
 
 interface Props {
   navigation: any;
@@ -29,31 +30,43 @@ const entries: Entry[] = [
     key: 'CampusClassroom',
     title: '教室查询',
     subtitle: '查看教室占用情况',
-    icon: require('../../assets/campus/classroom.png'),
+    icon: uiImages.campusClassroom,
   },
   {
     key: 'CampusGrades',
     title: '成绩查询',
     subtitle: '本学期与历史成绩',
-    icon: require('../../assets/campus/grades.png'),
+    icon: uiImages.campusGrades,
   },
   {
     key: 'CampusPEtest',
     title: '体测成绩',
     subtitle: '体测详情与历史',
-    icon: require('../../assets/campus/petest.png'),
+    icon: uiImages.campusPEtest,
   },
   {
     key: 'CampusDormitory',
     title: '宿舍服务',
     subtitle: '电费、健康打卡',
-    icon: require('../../assets/campus/dormitory.png'),
+    icon: uiImages.campusDormitory,
+  },
+  {
+    key: 'CampusFinance',
+    title: '校园财务',
+    subtitle: '校园卡余额与近期流水',
+    icon: uiImages.campusFinance,
+  },
+  {
+    key: 'CampusNetwork',
+    title: '校园网',
+    subtitle: '余额、账号与在线设备',
+    icon: uiImages.campusNetwork,
   },
   {
     key: 'CampusReservation',
     title: '图书馆预约',
     subtitle: '座位查询与预约、研读间',
-    icon: require('../../assets/campus/reservation.png'),
+    icon: uiImages.campusReservation,
   },
 ];
 

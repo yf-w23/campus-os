@@ -1,8 +1,12 @@
-import {useCallback} from 'react';
-import {Alert} from 'react-native';
+import {useCallback, useState} from 'react';
 import {useDispatch, useSelector} from 'react-redux';
 import {v4 as uuidv4} from 'uuid';
 import {ChatMessage} from '../../domain/agent';
+import {
+  ActionExecutionStatus,
+  ActionPreview,
+  ConfirmationSpec,
+} from '../../domain/actions';
 import {
   buildAgentContext,
   createMockAgentReply,
@@ -31,6 +35,13 @@ import {
 } from '../../state/slices/aiSlice';
 import {AppDispatch} from '../../state/store';
 
+interface PendingConfirmation {
+  tool: AgentTool;
+  spec: ConfirmationSpec;
+  preview?: ActionPreview;
+  resolve: (ok: boolean) => void;
+}
+
 export function useAIChat() {
   const dispatch = useDispatch<AppDispatch>();
   const {streaming, provider} = useSelector(selectAI);
@@ -39,6 +50,22 @@ export function useAIChat() {
   const {snapshot} = useSelector(selectLearning);
   const auth = useSelector(selectAuth);
   const {aiApiKeyConfigured} = useSelector(selectSettings);
+  const [pendingConfirmation, setPendingConfirmation] =
+    useState<PendingConfirmation | null>(null);
+
+  const cancelPendingConfirmation = useCallback(() => {
+    setPendingConfirmation(current => {
+      current?.resolve(false);
+      return null;
+    });
+  }, []);
+
+  const approvePendingConfirmation = useCallback(() => {
+    setPendingConfirmation(current => {
+      current?.resolve(true);
+      return null;
+    });
+  }, []);
 
   const sendQuestion = useCallback(
     async (question: string) => {
@@ -98,31 +125,34 @@ export function useAIChat() {
                 pushToolTrace({name: tool.name, label, status: 'running'}),
               );
             },
-            onToolEnd: (_tool: AgentTool, ok, detail) => {
+            onToolEnd: (
+              _tool: AgentTool,
+              status: ActionExecutionStatus,
+              detail,
+            ) => {
               dispatch(
                 updateLastToolTrace({
-                  status: ok ? 'success' : 'error',
+                  status,
                   detail,
                 }),
               );
               dispatch(setAgentStatus(undefined));
             },
-            requestConfirmation: (tool: AgentTool, args) =>
+            requestConfirmation: (tool: AgentTool, args, preview) =>
               new Promise<boolean>(resolve => {
-                const prompt = tool.confirmPrompt?.(args);
-                Alert.alert(
-                  prompt?.title ?? '确认操作',
-                  prompt?.message ?? '确认执行该操作？',
-                  [
-                    {
-                      text: '取消',
-                      style: 'cancel',
-                      onPress: () => resolve(false),
-                    },
-                    {text: '确认', onPress: () => resolve(true)},
-                  ],
-                  {cancelable: true, onDismiss: () => resolve(false)},
-                );
+                const prompt = tool.confirmPrompt?.(args, preview);
+                setPendingConfirmation({
+                  tool,
+                  preview,
+                  spec: {
+                    title: prompt?.title ?? '确认操作',
+                    message: prompt?.message ?? '确认执行该操作？',
+                    confirmLabel: prompt?.confirmLabel,
+                    cancelLabel: prompt?.cancelLabel,
+                    destructive: prompt?.destructive,
+                  },
+                  resolve,
+                });
               }),
           });
         }
@@ -155,5 +185,8 @@ export function useAIChat() {
     provider,
     aiApiKeyConfigured,
     sendQuestion,
+    pendingConfirmation,
+    approvePendingConfirmation,
+    cancelPendingConfirmation,
   };
 }
