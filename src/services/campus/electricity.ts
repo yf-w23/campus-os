@@ -65,7 +65,7 @@ export function clearEleSessionCache(): void {
 // =============================================================
 
 function inputValue(root: HTMLElement, name: string): string {
-  return root.querySelector(`input[name=${name}]`)?.getAttribute('value') ?? '';
+  return root.querySelector(`input[name="${name}"]`)?.getAttribute('value') ?? '';
 }
 
 function isLoginPage(root: HTMLElement): boolean {

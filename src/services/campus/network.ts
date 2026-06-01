@@ -288,13 +288,81 @@ async function readNetworkAccountInfo(): Promise<NetworkAccountInfo> {
 
 export async function getNetworkSnapshot(): Promise<NetworkSnapshot> {
   return withNetworkRetry(async () => {
-    const [balance, account, devices] = await Promise.all([
-      readNetworkBalance(),
-      readNetworkAccountInfo(),
-      readOnlineNetworkDevices(),
-    ]);
+    const homeHtml = await webvpnTransport.fetchText(NETWORK_HOME_URL);
+    const home = loadHtml(homeHtml);
+
+    const devices = parseDevicesFromHtml(home);
+    const balance = parseBalanceFromHtml(home);
+    const account = await parseAccountFromHtml(home);
+
     return {balance, account, devices};
   });
+}
+
+function parseDevicesFromHtml($: ReturnType<typeof loadHtml>): NetworkDevice[] {
+  return $('#w1-container table tbody tr')
+    .toArray()
+    .map(row => {
+      const cells = row.querySelectorAll('td');
+      return {
+        key: Number(row.getAttribute('data-key') ?? 0),
+        ip4: elementText(cells[0]),
+        ip6: elementText(cells[1]),
+        loggedAt: elementText(cells[2]),
+        authPermission: elementText(cells[3]),
+        mac: elementText(cells[4]),
+      };
+    })
+    .filter(device => device.key > 0);
+}
+
+function parseBalanceFromHtml($: ReturnType<typeof loadHtml>): NetworkBalance {
+  const cells = $('#w3-container table tbody tr').find('td').toArray();
+  if (cells.length < 5) {
+    throw new Error('校园网余额页面结构异常，请刷新后重试');
+  }
+  return {
+    productName: elementText(cells[0]),
+    usedBytes: elementText(cells[1]),
+    usedSeconds: elementText(cells[2]),
+    accountBalance: elementText(cells[3]),
+    settlementDate: elementText(cells[4]),
+  };
+}
+
+async function parseAccountFromHtml(
+  $: ReturnType<typeof loadHtml>,
+): Promise<NetworkAccountInfo> {
+  const statusIcon = $('.glyphicon-info-sign').toArray()[0];
+  const status =
+    nodeText(statusIcon?.parentNode as HTMLElement | undefined)
+      .replace(/\s+/g, ' ')
+      .trim() || '';
+
+  const usersHtml = await webvpnTransport.fetchText(NETWORK_USER_INFO_URL);
+  const users = loadHtml(usersHtml)('#w0 td').toArray();
+
+  const devicesHtml = await webvpnTransport.fetchText(NETWORK_ALLOWED_DEVICES_URL);
+  const devices = loadHtml(devicesHtml);
+  const allowedText =
+    nodeText(
+      devices('.glyphicon-exclamation-sign').toArray()[0]?.parentNode as
+        | HTMLElement
+        | undefined,
+    ) || '';
+  const allowedDevices = Number(/(\d+)/.exec(allowedText)?.[1] ?? 0);
+
+  return {
+    username: elementText(users[0]),
+    contactEmail: elementText(users[1]),
+    contactPhone: elementText(users[2]),
+    location: elementText(users[3]),
+    contactLandline: elementText(users[5]),
+    realName: elementText(users[6]),
+    userGroup: elementText(users[7]),
+    status,
+    allowedDevices,
+  };
 }
 
 export async function getOnlineNetworkDevices(): Promise<NetworkDevice[]> {

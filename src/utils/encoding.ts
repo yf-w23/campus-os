@@ -15,8 +15,15 @@
  * 内部用 iconv-lite。需要 Buffer 全局 polyfill（在 src/polyfills.ts 中已设置）。
  */
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const iconv = require('iconv-lite');
+let iconv: {
+  encode: (str: string, encoding: string) => Buffer | number[];
+  decode: (buf: Buffer | number[], encoding: string) => string;
+} | null = null;
+try {
+  iconv = require('iconv-lite');
+} catch {
+  // iconv-lite 不可用时 GBK 编解码降级为 UTF-8 percent-encode
+}
 
 const CJK_RE = /^[\u4e00-\u9fa5]$/;
 
@@ -39,18 +46,22 @@ export function gb2312PercentEncode(input: string): string {
   let out = '';
   for (const ch of input) {
     if (CJK_RE.test(ch)) {
-      try {
-        const bytes = iconv.encode(ch, 'gbk') as Uint8Array | {length: number};
-        const len = (bytes as any).length;
-        for (let i = 0; i < len; i += 1) {
-          out += pct((bytes as any)[i]);
+      if (iconv) {
+        try {
+          const bytes = iconv.encode(ch, 'gbk');
+          const len = bytes.length;
+          for (let i = 0; i < len; i += 1) {
+            out += pct(bytes[i]);
+          }
+          continue;
+        } catch {
+          // iconv 失败兜底：退回 UTF-8 percent-encode（极少发生）
+          out += encodeURIComponent(ch);
+          continue;
         }
-        continue;
-      } catch {
-        // iconv 失败兜底：退回 UTF-8 percent-encode（极少发生）
-        out += encodeURIComponent(ch);
-        continue;
       }
+      out += encodeURIComponent(ch);
+      continue;
     }
     out += ch;
   }
@@ -86,10 +97,16 @@ export function gb2312PercentDecode(input: string): string {
         i += 3;
       }
       if (bytes.length > 0) {
-        try {
-          out += iconv.decode(Buffer.from(bytes), 'gbk') as string;
-        } catch {
-          // 解码失败兜底：按原文塞回（带上 % 号）
+        if (iconv) {
+          try {
+            const buf = typeof global.Buffer !== 'undefined' ? (global as any).Buffer.from(bytes) : bytes;
+            out += iconv.decode(buf, 'gbk') as string;
+          } catch {
+            for (const b of bytes) {
+              out += `%${b.toString(16).padStart(2, '0').toUpperCase()}`;
+            }
+          }
+        } else {
           for (const b of bytes) {
             out += `%${b.toString(16).padStart(2, '0').toUpperCase()}`;
           }

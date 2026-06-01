@@ -24,6 +24,7 @@ export const en: TranslationKey = {
     emptyWeek: 'No classes this week',
     emptyWeekDesc: 'Tap Sync to load your timetable. Switch weeks or add notes via AI.',
     askAi: 'Ask AI',
+    cancel: 'Cancel',
     fieldTitle: 'Title',
     fieldLocation: 'Location (optional)',
     fieldNote: 'Note (optional)',

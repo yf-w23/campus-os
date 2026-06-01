@@ -1,5 +1,5 @@
 import React from 'react';
-import {Platform, StyleSheet} from 'react-native';
+import {Platform, Pressable, StyleSheet} from 'react-native';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {NavigationContainer} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
@@ -72,6 +72,9 @@ function MainTabs() {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
+        tabBarButton: props => (
+          <Pressable {...(props as any)} android_ripple={null} />
+        ),
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopWidth: StyleSheet.hairlineWidth,

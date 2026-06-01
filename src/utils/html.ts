@@ -45,12 +45,16 @@ export function wrapAsDocument(
   const fg = dark ? '#F5F5F7' : '#1A1A2E';
   const link = dark ? '#A78BFA' : '#7C5CFA';
 
+  const sanitizedBody = body
+    .replace(/<\/script>/gi, '<\\/script>')
+    .replace(/<\/style>/gi, '<\\/style>');
+
   return `<!DOCTYPE html>
 <html lang="zh-cmn-Hans">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src * data:; upgrade-insecure-requests" />
 <style>
   html, body {
     margin: 0;
@@ -89,10 +93,9 @@ export function wrapAsDocument(
   p { margin: 0 0 0.8em; }
   p:first-child { margin-top: 0; }
   p:last-child { margin-bottom: 0; }
-  /* 清华页面常用的 line-height 单位异常，统一 */
   [style*="line-height"] { line-height: 1.7 !important; }
 </style>
 </head>
-<body>${body}</body>
+<body>${sanitizedBody}</body>
 </html>`;
 }

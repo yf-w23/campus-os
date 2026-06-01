@@ -17,5 +17,9 @@ export async function loadPersonalEvents(): Promise<PersonalEvent[]> {
 }
 
 export async function savePersonalEvents(events: PersonalEvent[]): Promise<void> {
-  await AsyncStorage.setItem(KEY, JSON.stringify(events));
+  try {
+    await AsyncStorage.setItem(KEY, JSON.stringify(events));
+  } catch {
+    // 持久化失败不致命
+  }
 }

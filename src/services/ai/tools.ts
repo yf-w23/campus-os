@@ -38,6 +38,7 @@ import {
 import {
   getCampusCardInfo,
   getCampusCardTransactions,
+  rechargeCampusCardAlipay,
 } from '../campus/campusCard';
 import {
   getNetworkAccountInfo,
@@ -428,6 +429,67 @@ const getCampusCardTransactionsTool: AgentTool = {
   },
 };
 
+const rechargeCampusCardTool: AgentTool = {
+  name: 'recharge_campus_card',
+  title: '校园卡充值',
+  description:
+    '用支付宝给校园卡充值。金额 10–200 元，需用户二次确认后唤起支付宝支付。先用 get_campus_card_balance 查余额再建议合适金额。',
+  parameters: {
+    type: 'object',
+    properties: {
+      amount: {type: 'number', description: '充值金额（元），10–200'},
+    },
+    required: ['amount'],
+  },
+  risk: 'write_reversible',
+  permission: 'campus.card.recharge',
+  requiresConfirmation: true,
+  summarize: (a: any) => `校园卡充值 ${a?.amount ?? 0} 元`,
+  dryRun: async (a: any) => {
+    requireRealSession();
+    const amount = Number(a?.amount ?? 0);
+    if (amount < 10 || amount > 200) {
+      throw new Error('充值金额需在 10–200 元之间');
+    }
+    const info = await getCampusCardInfo();
+    return {
+      title: '校园卡支付宝充值',
+      summary: `充值 ${amount} 元（当前余额 ${info.balance.toFixed(2)} 元）`,
+      affectedResource: `校园卡（${info.userName}）`,
+      reversible: false,
+    };
+  },
+  confirmPrompt: (a: any) => ({
+    title: '确认校园卡充值',
+    message: `将通过支付宝向校园卡充值 ${a?.amount ?? 0} 元。\n\n确认后将生成支付宝付款链接，请在支付宝 App 中完成支付。`,
+  }),
+  run: async (args: {amount: number}) => {
+    requireRealSession();
+    const amount = Number(args.amount ?? 0);
+    if (amount < 10 || amount > 200) {
+      return {ok: false, message: '充值金额需在 10–200 元之间'};
+    }
+    const result = await rechargeCampusCardAlipay(amount);
+    if (result.ok && result.alipayUrl) {
+      return {
+        ok: true,
+        message: `已生成校园卡充值 ${amount} 元的支付宝付款链接。请打开以下链接完成支付，或告诉我用其它方式付款。`,
+        amount,
+        alipayUrl: result.alipayUrl,
+      };
+    }
+    return {ok: false, message: result.message};
+  },
+  verify: async (a: any) => {
+    const amount = Number(a?.amount ?? 0);
+    const info = await getCampusCardInfo();
+    return {
+      ok: true,
+      message: `充值后校园卡余额为 ${info.balance.toFixed(2)} 元`,
+    };
+  },
+};
+
 const getNetworkBalanceTool: AgentTool = {
   name: 'get_network_balance',
   title: '校园网余额',
@@ -662,7 +724,7 @@ const findAvailableClassroomsTool: AgentTool = {
         availableBuildings: buildings.map(b => b.name),
       };
     }
-    const weekNumber = Number(args.weekNumber ?? building.weekNumber);
+    const weekNumber = args.weekNumber != null ? Number(args.weekNumber) : building.weekNumber;
     const state = await fetchClassroomState(building.searchName, weekNumber);
     const dayIndex = Math.min(
       7,
@@ -827,7 +889,7 @@ const findSeatsTool: AgentTool = {
     const available = seats.filter(s => s.status === 1);
     return {
       availableCount: available.length,
-      seats: available.slice(0, 30).map(s => ({
+      seats: available.map(s => ({
         seatId: s.id,
         seatName: s.zhName,
         seatType: s.type,
@@ -1716,6 +1778,7 @@ export const AGENT_TOOLS: AgentTool[] = [
   getElectricityTool,
   getCampusCardBalanceTool,
   getCampusCardTransactionsTool,
+  rechargeCampusCardTool,
   getNetworkBalanceTool,
   getNetworkAccountInfoTool,
   listNetworkDevicesTool,

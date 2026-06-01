@@ -21,6 +21,7 @@ export async function saveLearningScheduleCache(
 ): Promise<void> {
   try {
     if (events.length === 0) {
+      await AsyncStorage.removeItem(KEY);
       return;
     }
     await AsyncStorage.setItem(KEY, JSON.stringify(events));

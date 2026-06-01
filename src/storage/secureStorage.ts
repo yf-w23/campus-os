@@ -20,19 +20,23 @@ export async function loadCredentials(): Promise<{
   password: string;
   fingerprint: string;
 } | null> {
-  const result = await Keychain.getGenericPassword({service: SERVICE});
-  if (!result) {
+  try {
+    const result = await Keychain.getGenericPassword({service: SERVICE});
+    if (!result) {
+      return null;
+    }
+    const parsed = JSON.parse(result.password) as {
+      password: string;
+      fingerprint: string;
+    };
+    return {
+      studentId: result.username,
+      password: parsed.password,
+      fingerprint: parsed.fingerprint,
+    };
+  } catch {
     return null;
   }
-  const parsed = JSON.parse(result.password) as {
-    password: string;
-    fingerprint: string;
-  };
-  return {
-    studentId: result.username,
-    password: parsed.password,
-    fingerprint: parsed.fingerprint,
-  };
 }
 
 export async function clearCredentials(): Promise<void> {
@@ -40,17 +44,29 @@ export async function clearCredentials(): Promise<void> {
 }
 
 export async function saveAIApiKey(providerId: string, apiKey: string): Promise<void> {
-  await Keychain.setGenericPassword(providerId, apiKey, {service: AI_SERVICE});
+  await Keychain.setGenericPassword(providerId, apiKey, {service: `${AI_SERVICE}.${providerId}`});
 }
 
 export async function loadAIApiKey(providerId: string): Promise<string | null> {
-  const result = await Keychain.getGenericPassword({service: AI_SERVICE});
-  if (!result || result.username !== providerId) {
+  try {
+    const result = await Keychain.getGenericPassword({service: `${AI_SERVICE}.${providerId}`});
+    if (!result) {
+      return null;
+    }
+    return result.password;
+  } catch {
     return null;
   }
-  return result.password;
 }
 
 export async function clearAIApiKeys(): Promise<void> {
-  await Keychain.resetGenericPassword({service: AI_SERVICE});
+  try {
+    await Keychain.resetGenericPassword({service: `${AI_SERVICE}.openai`});
+    await Keychain.resetGenericPassword({service: `${AI_SERVICE}.deepseek`});
+    await Keychain.resetGenericPassword({service: `${AI_SERVICE}.qwen`});
+    await Keychain.resetGenericPassword({service: `${AI_SERVICE}.moonshot`});
+    await Keychain.resetGenericPassword({service: `${AI_SERVICE}.custom`});
+  } catch {
+    // best-effort
+  }
 }

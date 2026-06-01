@@ -1,7 +1,7 @@
 /**
- * 校园卡只读服务 — 参考 thu-info-lib `card.ts` 的接口协议重写。
+ * 校园卡服务 — 参考 thu-info-lib `card.ts` 的接口协议重写。
  *
- * Phase 2 只接入余额与流水；充值、挂失、改密码等高风险动作不在这里暴露。
+ * 包含：余额/流水查询（只读）+ 支付宝/银行卡充值（写操作）。
  */
 import {AES, enc, mode, pad} from 'crypto-js';
 import {tsinghuaAuthService} from '../auth/tsinghuaAuth';
@@ -10,6 +10,7 @@ import {webvpnTransport} from '../webvpn/transport';
 const CARD_USER_BY_TOKEN_URL = 'https://card.tsinghua.edu.cn/login/getUserInfoFromToken';
 const CARD_INFO_BY_USER_URL = 'https://card.tsinghua.edu.cn/business/getCardUserinfo';
 const CARD_TRANSACTION_URL = 'https://card.tsinghua.edu.cn/business/querySelfTradeList';
+const CARD_RECHARGE_PAY_URL = 'https://card.tsinghua.edu.cn/business/pay';
 const CARD_LOGIN_PAYLOAD = 'eea30cbedcaf97c69d28b2d92f22a259/0?/userindex';
 
 export type CampusCardTransactionType = -1 | 1 | 2 | 3;
@@ -41,6 +42,8 @@ const accountBaseInfo = {
   user: '',
   cardId: '',
 };
+
+let cardLoginLock: Promise<void> | null = null;
 
 function parseDate(value: unknown): string | undefined {
   if (!value) {
@@ -100,6 +103,10 @@ async function ensureCampusCardLogin(force = false): Promise<void> {
   if (accountBaseInfo.user && !force) {
     return;
   }
+  if (Array.from(Object.values(accountBaseInfo)).some(v => v)) {
+    accountBaseInfo.user = '';
+    accountBaseInfo.cardId = '';
+  }
   const creds = await tsinghuaAuthService.hydrateCredentials();
   if (!creds) {
     throw new Error('未登录，无法访问校园卡服务');
@@ -111,6 +118,7 @@ async function ensureCampusCardLogin(force = false): Promise<void> {
     throw new Error('校园卡登录后未获取到用户标识');
   }
   accountBaseInfo.user = loginuser;
+  accountBaseInfo.cardId = '';
 }
 
 async function assureCampusCardSession(): Promise<void> {
@@ -130,7 +138,13 @@ async function withCardRetry<T>(operation: () => Promise<T>): Promise<T> {
     async () => {
       await ensureCampusCardLogin();
       await assureCampusCardSession();
-      return operation();
+      const snapshot = {...accountBaseInfo};
+      const result = await operation();
+      // verify login state was not corrupted during concurrent calls
+      if (accountBaseInfo.user !== snapshot.user || accountBaseInfo.cardId !== snapshot.cardId) {
+        throw new Error('校园卡登录态在请求期间被并发修改');
+      }
+      return result;
     },
     async () => {
       accountBaseInfo.user = '';
@@ -188,4 +202,69 @@ export async function getCampusCardTransactions(input: {
       txName: String(item.txname ?? ''),
     }));
   });
+}
+
+// =============================================================
+// 校园卡充值 — 对照 thu-info-lib cardRechargeFromWechatAlipay
+// =============================================================
+
+export interface CardRechargeResult {
+  ok: boolean;
+  message: string;
+  alipayUrl?: string;
+}
+
+/**
+ * 支付宝扫码充值。
+ * 对照 thu-info-lib `cardRechargeFromWechatAlipay` 的 alipay 分支：
+ *   POST CARD_RECHARGE_PAY_URL
+ *   body: {idserial, transamt, paytype:3, txcode:"2493", productdesc, method, tradetype}
+ *   response: {success, response: "{bizContent:{webUrl:'...'}}"}
+ *   → 解析 webUrl 尾部 payCode → 构建支付宝 Deep Link
+ */
+export async function rechargeCampusCardAlipay(
+  amount: number,
+): Promise<CardRechargeResult> {
+  return withCardRetry(async () => {
+    const raw = await cardFetchParsed<any>(CARD_RECHARGE_PAY_URL, {
+      idserial: accountBaseInfo.user,
+      transamt: amount,
+      paytype: 3,
+      txcode: '2493',
+      productdesc: '综合服务支付宝扫码充值',
+      method: 'trade.pay.qrcode',
+      tradetype: 'alipay.qrcode',
+    });
+
+    if (raw.success !== true) {
+      return {ok: false, message: raw.message ?? '支付宝充值接口返回失败'};
+    }
+
+    let parsedResponse: any;
+    try {
+      parsedResponse =
+        typeof raw.response === 'string'
+          ? JSON.parse(raw.response)
+          : raw.response;
+    } catch {
+      return {ok: false, message: '支付宝充值响应解析失败'};
+    }
+
+    const paymentUrl: string = parsedResponse?.bizContent?.webUrl;
+    if (!paymentUrl) {
+      return {ok: false, message: '支付宝充值未返回支付 URL'};
+    }
+
+    const payCode = paymentUrl.substring(paymentUrl.lastIndexOf('/') + 1);
+    const alipayUrl = buildAlipayUrl(payCode);
+
+    return {ok: true, message: '支付宝跳转链接已生成', alipayUrl};
+  });
+}
+
+export function buildAlipayUrl(payCode: string): string {
+  return (
+    'alipayqr://platformapi/startapp?saId=10000007&qrcode=https%3A%2F%2Fqr.alipay.com%2F' +
+    payCode
+  );
 }

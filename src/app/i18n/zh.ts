@@ -22,6 +22,7 @@ export const zh = {
     emptyWeek: '本周暂无课表',
     emptyWeekDesc: '请点右上角「同步」拉取教务课表；切换周次可查看其它周。备忘可通过「添加备忘」或 AI 创建。',
     askAi: '问 AI',
+    cancel: '取消',
     fieldTitle: '标题',
     fieldLocation: '地点（可选）',
     fieldNote: '备注（可选）',

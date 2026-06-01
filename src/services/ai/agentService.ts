@@ -6,7 +6,11 @@ import {
   VerificationResult,
 } from '../../domain/actions';
 import {LearningSnapshot} from '../../domain/learning';
-import type {AgentTool} from './tools';
+import {
+  getToolByName,
+  toolSpecs,
+  type AgentTool,
+} from './tools';
 
 export const AI_PRESETS: Record<
   AIProviderPreset,
@@ -379,9 +383,7 @@ async function auditToolCall(input: {
   errorMessage?: string;
 }): Promise<void> {
   try {
-    const {appendActionAuditRecord} = require('../../storage/actionAuditStorage') as typeof import(
-      '../../storage/actionAuditStorage'
-    );
+    const {appendActionAuditRecord} = await import('../../storage/actionAuditStorage');
     await appendActionAuditRecord({
       toolName: input.tool.name,
       toolTitle: input.tool.title,
@@ -413,7 +415,6 @@ export async function runAgent(
   context: AgentContext,
   callbacks: AgentCallbacks,
 ): Promise<string> {
-  const {getToolByName, toolSpecs} = require('./tools') as typeof import('./tools');
   const convo: any[] = [
     {role: 'system', content: buildSystemPrompt(context)},
     ...messages.map(m => ({role: m.role, content: m.content})),

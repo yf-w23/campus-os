@@ -38,8 +38,12 @@ export async function setLocale(locale: 'zh' | 'en'): Promise<void> {
 }
 
 export async function getAIProviderConfig(): Promise<Omit<AIProviderConfig, 'apiKey'> | null> {
-  const raw = await AsyncStorage.getItem(KEYS.aiProvider);
-  return raw ? (JSON.parse(raw) as Omit<AIProviderConfig, 'apiKey'>) : null;
+  try {
+    const raw = await AsyncStorage.getItem(KEYS.aiProvider);
+    return raw ? (JSON.parse(raw) as Omit<AIProviderConfig, 'apiKey'>) : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function setAIProviderConfig(

@@ -19,10 +19,15 @@ export async function loadConversations(): Promise<PersistedConversations> {
       AsyncStorage.getItem(ACTIVE_KEY),
     ]);
     const conversations = raw ? (JSON.parse(raw) as Conversation[]) : [];
-    // 清掉任何残留的 streaming 标记（上次异常退出时可能未清）
+    if (!Array.isArray(conversations)) {
+      return {conversations: [], activeConversationId: null};
+    }
     for (const conv of conversations) {
+      if (!conv || !Array.isArray(conv.messages)) {
+        continue;
+      }
       for (const message of conv.messages) {
-        if (message.streaming) {
+        if (message && message.streaming) {
           message.streaming = false;
         }
       }

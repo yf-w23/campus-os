@@ -46,7 +46,7 @@ type AIScreenProps = CompositeScreenProps<
 
 function relativeTime(iso: string): string {
   const t = new Date(iso).getTime();
-  if (isNaN(t)) {
+  if (Number.isNaN(t)) {
     return '';
   }
   const diff = Date.now() - t;
@@ -88,7 +88,7 @@ function ToolTraceList({traces}: {traces: ToolTrace[]}) {
   return (
     <View style={styles.traceWrap}>
       {traces.map((tr, i) => (
-        <View key={i} style={styles.traceRow}>
+        <View key={`trace-${i}`} style={styles.traceRow}>
           <Text
             style={[
               styles.traceIcon,

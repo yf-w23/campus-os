@@ -457,7 +457,12 @@ export async function paySportsReservationLater(
   const checkText = await webvpnTransport.fetchText(SPORTS_PAYMENT_CHECK_URL, {
     body: {id: searchResult[1], token: searchResult[2]},
   });
-  const checkResult = JSON.parse(checkText) as {code?: string; message?: string};
+  let checkResult: {code?: string; message?: string};
+  try {
+    checkResult = JSON.parse(checkText) as {code?: string; message?: string};
+  } catch {
+    throw new Error('支付校验接口返回非 JSON');
+  }
   if (checkResult.code !== '0') {
     throw new Error(checkResult.message ?? '支付校验失败');
   }

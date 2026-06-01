@@ -30,9 +30,18 @@ function formatYmdDate(d: Date): string {
   return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
 }
 
-/** 仅 roamDefault，不调用 activateRegistrar（真机上后者易触发 Network request failed） */
+let registrarRoamEnsured = false;
+
 async function ensureRegistrarRoam(): Promise<void> {
+  if (registrarRoamEnsured) {
+    return;
+  }
   await tsinghuaAuthService.roamDefault(REGISTRAR_ROAM_PAYLOAD);
+  registrarRoamEnsured = true;
+}
+
+export function clearRegistrarSessionCache(): void {
+  registrarRoamEnsured = false;
 }
 
 function legacyRangeDates(): {start: string; end: string} {
@@ -63,7 +72,10 @@ export async function fetchScheduleRangeLegacy(): Promise<ScheduleEvent[]> {
       }
       return mapScheduleRows(rows);
     },
-    () => ensureRegistrarRoam(),
+    () => {
+      registrarRoamEnsured = false;
+      return ensureRegistrarRoam();
+    },
     'schedule-legacy',
   );
 }

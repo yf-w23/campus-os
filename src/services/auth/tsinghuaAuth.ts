@@ -764,7 +764,12 @@ export class TsinghuaAuthService {
     credentials: CampusCredentials,
   ): Promise<void> {
     if (this.reloginInflight) {
-      return this.reloginInflight;
+      try {
+        await this.reloginInflight;
+        return;
+      } catch {
+        this.reloginInflight = null;
+      }
     }
     this.reloginInflight = (async () => {
       try {

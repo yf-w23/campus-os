@@ -1,10 +1,13 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
@@ -12,12 +15,15 @@ import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {colors, radii, spacing, typography} from '../../app/theme';
 import {DetailHeader, InfoRow} from '../common/components/Ui';
 import {PrimaryButton} from '../common/components/Buttons';
+import {Chip} from '../common/components/Chip';
 import {RootStackParamList} from '../../app/navigation/types';
 import {
   CampusCardInfo,
   CampusCardTransaction,
   getCampusCardInfo,
   getCampusCardTransactions,
+  rechargeCampusCardAlipay,
+  buildAlipayUrl,
 } from '../../services/campus/campusCard';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CampusFinance'>;
@@ -61,6 +67,9 @@ export function CampusFinanceScreen({navigation}: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [rechargeAmount, setRechargeAmount] = useState('');
+  const [recharging, setRecharging] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -83,6 +92,38 @@ export function CampusFinanceScreen({navigation}: Props) {
   useEffect(() => {
     load();
   }, [load]);
+
+  const rawAmount = Number(rechargeAmount);
+  const validAmount = /^(([1-9]+\d*)|0)(\.\d{0,2})?$/.test(rechargeAmount) && rawAmount >= 10 && rawAmount <= 200;
+  const quickAmounts = [10, 50, 100];
+
+  const handleQuickAmount = (amount: number) => {
+    setRechargeAmount(String(amount));
+  };
+
+  const handleRecharge = async () => {
+    if (!validAmount || recharging) {
+      return;
+    }
+    setRecharging(true);
+    try {
+      const result = await rechargeCampusCardAlipay(rawAmount);
+      if (result.ok && result.alipayUrl) {
+        const canOpen = await Linking.canOpenURL(result.alipayUrl);
+        if (canOpen) {
+          await Linking.openURL(result.alipayUrl);
+        } else {
+          Alert.alert('未安装支付宝', '请安装支付宝 App 后重试，或通过校园卡网站充值。');
+        }
+      } else {
+        Alert.alert('充值失败', result.message);
+      }
+    } catch (e) {
+      Alert.alert('充值出错', e instanceof Error ? e.message : '未知错误');
+    } finally {
+      setRecharging(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -182,11 +223,42 @@ export function CampusFinanceScreen({navigation}: Props) {
           )}
         </View>
 
-        <View style={styles.notice}>
-          <Text style={styles.noticeTitle}>安全边界</Text>
-          <Text style={styles.noticeText}>
-            本页只做余额和流水查询。充值、挂失、改密码等高风险校园卡事务仍需通过官方页面手动完成。
-          </Text>
+        <Text style={styles.sectionTitle}>校园卡充值</Text>
+        <View style={styles.card}>
+          <View style={styles.rechargeQuickRow}>
+            {quickAmounts.map(amount => (
+              <Chip
+                key={amount}
+                label={`${amount} 元`}
+                variant={Number(rechargeAmount) === amount ? 'accent' : 'default'}
+                onPress={() => handleQuickAmount(amount)}
+              />
+            ))}
+          </View>
+          <View style={styles.rechargeInputRow}>
+            <Text style={styles.rechargeCurrency}>￥</Text>
+            <TextInput
+              style={styles.rechargeInput}
+              keyboardType="numeric"
+              placeholder="输入金额"
+              placeholderTextColor={colors.textMuted}
+              value={rechargeAmount}
+              onChangeText={setRechargeAmount}
+              editable={!recharging}
+            />
+          </View>
+          <View style={styles.rechargeHintRow}>
+            <Text style={styles.rechargeHint}>
+              金额 10–200 元，单日累计不超过 400 元
+            </Text>
+          </View>
+          <PrimaryButton
+            label={recharging ? '生成付款链接…' : '支付宝充值'}
+            onPress={handleRecharge}
+            disabled={!validAmount || recharging}
+            loading={recharging}
+            variant="primary"
+          />
         </View>
 
         <Pressable
@@ -282,6 +354,37 @@ const styles = StyleSheet.create({
   },
   noticeTitle: {...typography.label, color: colors.text},
   noticeText: {...typography.caption, color: colors.textSecondary},
+  rechargeQuickRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  rechargeInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+    paddingBottom: spacing.xs,
+  },
+  rechargeCurrency: {
+    ...typography.h2,
+    color: colors.text,
+    marginRight: spacing.sm,
+  },
+  rechargeInput: {
+    flex: 1,
+    ...typography.h2,
+    color: colors.text,
+    padding: 0,
+  },
+  rechargeHintRow: {
+    marginBottom: spacing.md,
+  },
+  rechargeHint: {
+    ...typography.caption,
+    color: colors.textMuted,
+  },
   linkRow: {
     marginTop: spacing.md,
     backgroundColor: colors.surface,

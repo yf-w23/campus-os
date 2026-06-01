@@ -21,24 +21,32 @@ export async function appendPersonalEvent(
     createdAt: new Date().toISOString(),
   };
   store.dispatch(addPersonalEvent(event));
-  const next = [...store.getState().schedule.personalEvents];
+  const next = store.getState().schedule.personalEvents;
   await savePersonalEvents(next);
   return event;
 }
 
 export async function deletePersonalEventById(id: string): Promise<boolean> {
-  const events = store.getState().schedule.personalEvents;
-  if (!events.some(e => e.id === id)) {
+  const trimmed = id?.trim();
+  if (!trimmed) {
+    return false;
+  }
+  const eventsBefore = store.getState().schedule.personalEvents;
+  if (!eventsBefore.some(e => e.id === id)) {
     return false;
   }
   store.dispatch(removePersonalEvent(id));
-  await savePersonalEvents(events.filter(e => e.id !== id));
+  const eventsAfter = store.getState().schedule.personalEvents;
+  await savePersonalEvents(eventsAfter);
   return true;
 }
 
 export function findPersonalEvent(key: string): PersonalEvent | undefined {
+  const trimmed = key?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
   const events = store.getState().schedule.personalEvents;
-  const trimmed = key.trim();
   return (
     events.find(e => e.id === trimmed) ??
     events.find(e => e.title === trimmed) ??

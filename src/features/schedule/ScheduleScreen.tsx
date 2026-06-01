@@ -305,7 +305,7 @@ export function ScheduleScreen({navigation}: Props) {
 
   const handleDelete = (id: string, title: string) => {
     Alert.alert(t.schedule.deleteTitle, `删除「${title}」？`, [
-      {text: t.ai.cancel, style: 'cancel'},
+      {text: t.schedule.cancel, style: 'cancel'},
       {
         text: t.schedule.deleteConfirm,
         style: 'destructive',
@@ -316,20 +316,24 @@ export function ScheduleScreen({navigation}: Props) {
 
   const onBlockPress = (block: GridBlock) => {
     if (block.kind === 'personal') {
-      Alert.alert(block.title, [
-        `${block.startTime}–${block.endTime}`,
-        block.location,
-        block.note,
-      ]
-        .filter(Boolean)
-        .join('\n'), [
-        {text: t.ai.cancel, style: 'cancel'},
-        {
-          text: t.schedule.deleteConfirm,
-          style: 'destructive',
-          onPress: () => handleDelete(block.eventId, block.title),
-        },
-      ]);
+      Alert.alert(
+        block.title,
+        [
+          `${block.startTime}–${block.endTime}`,
+          block.location,
+          block.note,
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        [
+          {text: t.schedule.cancel, style: 'cancel'},
+          {
+            text: t.schedule.deleteConfirm,
+            style: 'destructive',
+            onPress: () => handleDelete(block.eventId, block.title),
+          },
+        ],
+      );
       return;
     }
     setUserPickedDate(true);

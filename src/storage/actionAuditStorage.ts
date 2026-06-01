@@ -15,8 +15,11 @@ function makeAuditId(): string {
 }
 
 function maskString(value: string): string {
-  if (!value) {
+  if (value === undefined || value === null) {
     return '[REDACTED]';
+  }
+  if (value.length === 0) {
+    return '';
   }
   if (/^\d{11}$/.test(value)) {
     return `${value.slice(0, 3)}****${value.slice(-4)}`;
@@ -38,6 +41,7 @@ export function sanitizeAuditValue(
   value: unknown,
   keyHint = '',
   depth = 0,
+  visited: WeakSet<object> = new WeakSet(),
 ): unknown {
   if (SENSITIVE_KEY_PATTERN.test(keyHint)) {
     return typeof value === 'string' ? maskString(value) : '[REDACTED]';
@@ -55,18 +59,26 @@ export function sanitizeAuditValue(
     return '[TRUNCATED]';
   }
   if (Array.isArray(value)) {
+    if (visited.has(value)) {
+      return '[CIRCULAR]';
+    }
+    visited.add(value);
     const items = value
       .slice(0, MAX_ARRAY_LENGTH)
-      .map(item => sanitizeAuditValue(item, keyHint, depth + 1));
+      .map(item => sanitizeAuditValue(item, keyHint, depth + 1, visited));
     if (value.length > MAX_ARRAY_LENGTH) {
       items.push(`[${value.length - MAX_ARRAY_LENGTH} more items]`);
     }
     return items;
   }
   if (typeof value === 'object') {
+    if (visited.has(value)) {
+      return '[CIRCULAR]';
+    }
+    visited.add(value);
     const out: Record<string, unknown> = {};
     for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-      out[key] = sanitizeAuditValue(item, key, depth + 1);
+      out[key] = sanitizeAuditValue(item, key, depth + 1, visited);
     }
     return out;
   }

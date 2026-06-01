@@ -424,6 +424,7 @@ export async function getLibraryAccessToken(force = false): Promise<string> {
 export interface BookResult {
   status: number;
   msg: string;
+  tokenExpired?: boolean;
 }
 
 /**
@@ -431,6 +432,7 @@ export interface BookResult {
  *   POST api.php/spaces/{seatId}/book
  *   body: {access_token, userid, segment, type, operateChannel=2}
  *
+ * 如果 access_token 过期，自动刷新 token 并重试一次。
  * 返回 `{status: 0, msg: "ok"}` 表示成功；其他都按错误处理。
  */
 export async function bookLibrarySeat(
@@ -444,26 +446,39 @@ export async function bookLibrarySeat(
     throw new Error('未登录，无法预约座位');
   }
   const dayInfo = await getLibraryDay(sectionId, dateChoice);
+
+  const doBook = async (token: string): Promise<BookResult> => {
+    const url = `${LIBRARY_BOOK_URL_PREFIX}${seat.id}${LIBRARY_BOOK_URL_SUFFIX}`;
+    const text = await webvpnTransport.fetchText(url, {
+      body: {
+        access_token: token,
+        userid: creds.studentId,
+        segment: dayInfo.segmentId,
+        type: String(seat.type),
+        operateChannel: '2',
+      },
+    });
+    let parsed: any;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error(`预约接口响应非 JSON: ${text.slice(0, 80)}`);
+    }
+    const status = Number(parsed?.status ?? -1);
+    const msg = String(parsed?.msg ?? '');
+    if (status !== 0 && /token|令牌|过期|invalid/i.test(msg)) {
+      return {status, msg, tokenExpired: true};
+    }
+    return {status, msg};
+  };
+
   const token = await getLibraryAccessToken();
-  const url = `${LIBRARY_BOOK_URL_PREFIX}${seat.id}${LIBRARY_BOOK_URL_SUFFIX}`;
-  const text = await webvpnTransport.fetchText(url, {
-    body: {
-      access_token: token,
-      userid: creds.studentId,
-      segment: dayInfo.segmentId,
-      type: String(seat.type),
-      operateChannel: '2',
-    },
-  });
-  let parsed: any;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new Error(`预约接口响应非 JSON: ${text.slice(0, 80)}`);
+  const result = await doBook(token);
+  if ((result as any).tokenExpired) {
+    const freshToken = await getLibraryAccessToken(true);
+    return doBook(freshToken);
   }
-  const status = Number(parsed?.status ?? -1);
-  const msg = String(parsed?.msg ?? '');
-  return {status, msg};
+  return result;
 }
 
 export async function getLibraryBookingRecords(): Promise<LibraryBookingRecord[]> {
@@ -504,21 +519,33 @@ export async function cancelLibraryBooking(
   if (!creds) {
     throw new Error('未登录');
   }
-  const token = await getLibraryAccessToken();
-  const url = `${LIBRARY_CANCEL_BOOKING_URL_PREFIX}${bookingId}`;
-  const text = await webvpnTransport.fetchText(url, {
-    body: {userid: creds.studentId, access_token: token},
-  });
-  let parsed: any;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new Error(`取消接口响应非 JSON: ${text.slice(0, 80)}`);
-  }
-  return {
-    status: Number(parsed?.status ?? -1),
-    msg: String(parsed?.msg ?? ''),
+
+  const doCancel = async (token: string): Promise<BookResult> => {
+    const url = `${LIBRARY_CANCEL_BOOKING_URL_PREFIX}${bookingId}`;
+    const text = await webvpnTransport.fetchText(url, {
+      body: {userid: creds.studentId, access_token: token},
+    });
+    let parsed: any;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error(`取消接口响应非 JSON: ${text.slice(0, 80)}`);
+    }
+    const status = Number(parsed?.status ?? -1);
+    const msg = String(parsed?.msg ?? '');
+    if (status !== 0 && /token|令牌|过期|invalid/i.test(msg)) {
+      return {status, msg, tokenExpired: true};
+    }
+    return {status, msg};
   };
+
+  const token = await getLibraryAccessToken();
+  const result = await doCancel(token);
+  if ((result as any).tokenExpired) {
+    const freshToken = await getLibraryAccessToken(true);
+    return doCancel(freshToken);
+  }
+  return result;
 }
 
 // =============================================================

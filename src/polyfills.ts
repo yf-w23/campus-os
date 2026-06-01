@@ -7,20 +7,27 @@ declare global {
 const globalAny = global as any;
 
 if (typeof globalAny.atob === 'undefined') {
-  const base64 = require('base-64');
-  globalAny.atob = base64.decode;
-  globalAny.btoa = base64.encode;
+  try {
+    const base64 = require('base-64');
+    globalAny.atob = base64.decode;
+    globalAny.btoa = base64.encode;
+  } catch {
+    globalAny.atob = (input: string) => input;
+    globalAny.btoa = (input: string) => input;
+  }
 }
 
-// Buffer 需要给 iconv-lite 等 Node 风格依赖用（教务系统 URL 里的建筑名需 GB2312 编码）
 if (typeof globalAny.Buffer === 'undefined') {
-  const {Buffer} = require('buffer');
-  globalAny.Buffer = Buffer;
+  try {
+    const {Buffer: Buf} = require('buffer');
+    globalAny.Buffer = Buf;
+  } catch {
+    // Buffer polyfill 不可用时降级：GBK 编码功能将不可用但 App 不崩溃
+  }
 }
 
-// process polyfill 给同样依赖 Node 环境的库使用（用 any 避开和 @types/node 的 Process 冲突）
 if (typeof globalAny.process === 'undefined') {
   globalAny.process = {env: {}, browser: true};
-} else if (!globalAny.process.env) {
+} else if (typeof globalAny.process.env !== 'object' || globalAny.process.env === null) {
   globalAny.process.env = {};
 }

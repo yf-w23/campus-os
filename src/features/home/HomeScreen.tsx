@@ -90,7 +90,7 @@ export function HomeScreen({navigation}: HomeScreenProps) {
           <GradientCard style={styles.heroCard}>
             <Text style={styles.greeting}>{greetingByHour()}</Text>
             <Text style={styles.name} numberOfLines={1}>
-              {auth.session.displayName ?? t.appName}
+              {auth?.session?.displayName ?? t.appName}
             </Text>
             <View style={styles.badgeRow}>
               {auth.demoMode || isDemoData ? (
