@@ -8,7 +8,7 @@
 
 把课表、作业、成绩、教室、电费、校园卡、校园网、图书馆座位和 AI 助手揉到一个 App 里。完全 native UI，不依赖任何业务后端 —— 你的账号密码和 API Key 只存在你手机的安全存储里。
 
-**当前版本：v0.5.1** · [下载 APK](https://github.com/yf-w23/campus-os/releases/latest)
+**当前版本：v0.5.2** · [下载 APK](https://github.com/yf-w23/campus-os/releases/latest)
 
 ---
 
@@ -18,7 +18,7 @@
 
 [**Releases → 最新版本**](https://github.com/yf-w23/campus-os/releases/latest)
 
-下载 `campus-os-v0.5.1-android-arm64.apk`（约 69 MB），传到 Android 手机安装即可。
+下载 `campus-os-v0.5.2-android-arm64.apk`（约 69 MB），传到 Android 手机安装即可。
 
 - 系统要求：Android 7+（API 24+）
 - 架构：arm64-v8a（2018 年后绝大多数手机都是；32 位 / x86 模拟器暂不支持）
@@ -118,6 +118,17 @@ npm run android           # 另开终端编译 debug 包
 - 切换中文 / English、深色 / 浅色外观
 - 演示模式开关
 - 退出登录（清掉 Keychain + Redux + 持久化会话标记）
+
+---
+
+## v0.5.2 更新摘要
+
+| 项目 | 说明 |
+|---|---|
+| 校园卡流水 | 修正交易金额方向：食堂/商户消费显示为支出，充值、补贴、退款等显示为收入 |
+| 图书馆预约 | AI 预约成功后优先使用接口结果展示，避免预约记录延迟刷新时误报失败 |
+| 测试 | 新增校园卡流水金额归一化用例，锁定消费、充值与交易类型判断 |
+| Release | [v0.5.2](https://github.com/yf-w23/campus-os/releases/tag/v0.5.2) 附 arm64 APK |
 
 ---
 

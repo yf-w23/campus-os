@@ -1153,7 +1153,16 @@ const bookSeatTool: AgentTool = {
       a?.seatName ?? '座位 ' + a?.seatId
     }（${a?.date === 'tomorrow' ? '明天' : '今天'}）\n\n确认后将真实下单。`,
   }),
-  verify: async (a: any) => {
+  verify: async (a: any, result: any) => {
+    if (result?.ok === true && result?.booking) {
+      return {ok: true, message: '已在预约记录中确认'};
+    }
+    if (result?.ok === true) {
+      return {
+        ok: true,
+        message: '预约接口已返回成功，预约记录可能稍后刷新',
+      };
+    }
     const seatLabel = String(a?.seatName ?? a?.seatId ?? '');
     const records = await getLibraryBookingRecords();
     const hit = records.find(record =>

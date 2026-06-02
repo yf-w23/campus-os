@@ -516,7 +516,11 @@ export async function runAgent(
                 errorMessage = verification.message ?? '执行后验证失败';
               }
             }
-            callbacks.onToolEnd?.(tool, status, summarizeToolResult(result));
+            callbacks.onToolEnd?.(
+              tool,
+              status,
+              errorMessage ?? summarizeToolResult(result),
+            );
           } catch (e) {
             const detail = e instanceof Error ? e.message : String(e);
             result = {error: detail};

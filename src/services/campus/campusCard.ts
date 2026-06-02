@@ -38,6 +38,44 @@ export interface CampusCardTransaction {
   txName: string;
 }
 
+export function normalizeCampusCardTransactionAmount(item: {
+  txamt?: unknown;
+  tradetype?: unknown;
+  summary?: unknown;
+  mername?: unknown;
+  meraddr?: unknown;
+  txname?: unknown;
+}): number {
+  const raw = Number(item.txamt ?? 0) / 100;
+  if (!Number.isFinite(raw) || raw === 0) {
+    return 0;
+  }
+  if (raw < 0) {
+    return raw;
+  }
+
+  const type = Number(item.tradetype);
+  if (type === 2 || type === 3) {
+    return raw;
+  }
+  if (type === 1) {
+    return -raw;
+  }
+
+  const haystack = [
+    item.summary,
+    item.mername,
+    item.meraddr,
+    item.txname,
+  ]
+    .filter(v => v != null)
+    .map(String)
+    .join(' ');
+  return /充值|圈存|补助|补贴|退款|退费|转入|入账|收入|发放/.test(haystack)
+    ? raw
+    : -raw;
+}
+
 const accountBaseInfo = {
   user: '',
   cardId: '',
@@ -196,7 +234,7 @@ export async function getCampusCardTransactions(input: {
       summary: String(item.summary ?? ''),
       timestamp: parseDate(item.txdate) ?? '',
       balance: Number(item.balance ?? 0) / 100,
-      amount: Number(item.txamt ?? 0) / 100,
+      amount: normalizeCampusCardTransactionAmount(item),
       address: String(item.meraddr ?? ''),
       name: item.mername ? String(item.mername) : undefined,
       txName: String(item.txname ?? ''),

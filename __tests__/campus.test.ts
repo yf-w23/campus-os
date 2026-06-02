@@ -17,6 +17,7 @@ import {
   parseClassroomList,
   parseClassroomState,
 } from '../src/services/campus/classroom';
+import {normalizeCampusCardTransactionAmount} from '../src/services/campus/campusCard';
 
 describe('parseUrlToWebVPN', () => {
   it('maps learn host to webvpn token path', () => {
@@ -80,6 +81,33 @@ describe('buildAgentContext', () => {
     expect(context.scheduleSummary).toContain('数据结构');
     expect(context.ddlSummary).toContain('编程作业 3');
     expect(context.courseSummary).toContain('计算机网络');
+  });
+});
+
+describe('campus card transactions', () => {
+  it('marks merchant transactions as expenses when the API amount is positive', () => {
+    expect(
+      normalizeCampusCardTransactionAmount({
+        txamt: 300,
+        mername: '桃李园_二层大伙',
+        meraddr: '桃李园',
+      }),
+    ).toBe(-3);
+  });
+
+  it('keeps online recharge transactions as income', () => {
+    expect(
+      normalizeCampusCardTransactionAmount({
+        txamt: 1000,
+        mername: '移动端交易(100032026060210...)',
+        meraddr: '在线充值',
+      }),
+    ).toBe(10);
+  });
+
+  it('uses transaction type when the backend provides one', () => {
+    expect(normalizeCampusCardTransactionAmount({txamt: 1270, tradetype: 1})).toBe(-12.7);
+    expect(normalizeCampusCardTransactionAmount({txamt: 5000, tradetype: 2})).toBe(50);
   });
 });
 
