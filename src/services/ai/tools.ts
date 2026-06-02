@@ -1170,7 +1170,7 @@ const bookSeatTool: AgentTool = {
     }
     const cancel = await cancelLibraryBooking(String(bookingId));
     return {
-      ok: cancel.status === 0 || cancel.status === 1,
+      ok: cancel.status === 1,
       message: cancel.msg || '已尝试取消预约',
     };
   },
@@ -1186,7 +1186,7 @@ const bookSeatTool: AgentTool = {
       Number(args.sectionId),
       dateChoiceFromArg(args.date),
     );
-    if (result.status === 0) {
+    if (result.status === 1) {
       const records = await getLibraryBookingRecords().catch(() => []);
       const seatLabel = String((args as any).seatName ?? args.seatId);
       const booking = records.find(record => record.pos.includes(seatLabel));
@@ -1247,7 +1247,7 @@ const cancelLibrarySeatBookingTool: AgentTool = {
   run: async (args: {bookingId: string}) => {
     requireRealSession();
     const result = await cancelLibraryBooking(String(args.bookingId));
-    if (result.status === 0 || result.status === 1) {
+    if (result.status === 1) {
       return {ok: true, message: result.msg || '已取消预约'};
     }
     return {ok: false, message: result.msg || '取消失败'};

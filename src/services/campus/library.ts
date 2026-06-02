@@ -3,7 +3,7 @@
  *
  * 接口层次：
  *   GET api.php/areas/1/tree/1                       → 全部图书馆（顶层）
- *   GET api.php/areas/{libraryId}/date/{YYYY-MM-DD}  → 楼层列表（childArea）
+ *   GET api.php/areas/{libraryId}                    → 楼层列表（childArea）
  *   GET api.php/areas/{floorId}/date/{YYYY-MM-DD}    → 分区列表（childArea + 含 TotalCount）
  *   GET api.php/areadays/{sectionId}                 → 该分区可预约日期 / 时段列表
  *   GET api.php/spaces_old?area=X&segment=Y&day=...  → 该分区在某时段的座位状态
@@ -234,8 +234,7 @@ export async function getLibraryFloorList(
   dateChoice: DateChoice = 0,
 ): Promise<LibraryFloor[]> {
   await ensureLibraryAccess();
-  const date = dateForChoice(dateChoice);
-  const url = `${LIBRARY_AREAS_URL_PREFIX}${libraryId}/date/${date}`;
+  const url = `${LIBRARY_AREAS_URL_PREFIX}${libraryId}`;
   return withLibRetry(async () => {
     const root = await libFetchList<{childArea?: any[]}>(url);
     const rawFloors = root?.childArea ?? [];
@@ -433,7 +432,7 @@ export interface BookResult {
  *   body: {access_token, userid, segment, type, operateChannel=2}
  *
  * 如果 access_token 过期，自动刷新 token 并重试一次。
- * 返回 `{status: 0, msg: "ok"}` 表示成功；其他都按错误处理。
+ * 返回 `{status: 1, msg: "ok"}` 表示成功；其他都按错误处理。
  */
 export async function bookLibrarySeat(
   seat: {id: number; type: number},
@@ -523,7 +522,13 @@ export async function cancelLibraryBooking(
   const doCancel = async (token: string): Promise<BookResult> => {
     const url = `${LIBRARY_CANCEL_BOOKING_URL_PREFIX}${bookingId}`;
     const text = await webvpnTransport.fetchText(url, {
-      body: {userid: creds.studentId, access_token: token},
+      body: {
+        _method: 'delete',
+        id: bookingId,
+        userid: creds.studentId,
+        access_token: token,
+        operateChannel: '2',
+      },
     });
     let parsed: any;
     try {

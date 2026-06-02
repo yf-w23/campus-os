@@ -74,10 +74,6 @@ export function EleRechargeScreen({navigation}: Props) {
     try {
       const payCode = await getEleRechargePayCode(money);
       const url = buildAlipayUrl(payCode);
-      const canOpen = await Linking.canOpenURL(url);
-      if (!canOpen) {
-        throw new Error('未安装支付宝或无法唤起');
-      }
       await Linking.openURL(url);
       setAmount('');
     } catch (e) {

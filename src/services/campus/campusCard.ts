@@ -10,7 +10,7 @@ import {webvpnTransport} from '../webvpn/transport';
 const CARD_USER_BY_TOKEN_URL = 'https://card.tsinghua.edu.cn/login/getUserInfoFromToken';
 const CARD_INFO_BY_USER_URL = 'https://card.tsinghua.edu.cn/business/getCardUserinfo';
 const CARD_TRANSACTION_URL = 'https://card.tsinghua.edu.cn/business/querySelfTradeList';
-const CARD_RECHARGE_PAY_URL = 'https://card.tsinghua.edu.cn/business/pay';
+const CARD_RECHARGE_PAY_URL = 'https://card.tsinghua.edu.cn/wx/rechard/qrcode';
 const CARD_LOGIN_PAYLOAD = 'eea30cbedcaf97c69d28b2d92f22a259/0?/userindex';
 
 export type CampusCardTransactionType = -1 | 1 | 2 | 3;
@@ -217,7 +217,7 @@ export interface CardRechargeResult {
 /**
  * 支付宝扫码充值。
  * 对照 thu-info-lib `cardRechargeFromWechatAlipay` 的 alipay 分支：
- *   POST CARD_RECHARGE_PAY_URL
+ *   POST CARD_RECHARGE_PAY_URL (`/wx/rechard/qrcode`)
  *   body: {idserial, transamt, paytype:3, txcode:"2493", productdesc, method, tradetype}
  *   response: {success, response: "{bizContent:{webUrl:'...'}}"}
  *   → 解析 webUrl 尾部 payCode → 构建支付宝 Deep Link

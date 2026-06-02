@@ -8,7 +8,7 @@
 
 把课表、作业、成绩、教室、电费、校园卡、校园网、图书馆座位和 AI 助手揉到一个 App 里。完全 native UI，不依赖任何业务后端 —— 你的账号密码和 API Key 只存在你手机的安全存储里。
 
-**当前版本：v0.5.0** · [下载 APK](https://github.com/yf-w23/campus-os/releases/latest)
+**当前版本：v0.5.1** · [下载 APK](https://github.com/yf-w23/campus-os/releases/latest)
 
 ---
 
@@ -18,7 +18,7 @@
 
 [**Releases → 最新版本**](https://github.com/yf-w23/campus-os/releases/latest)
 
-下载 `campus-os-v0.5.0-android-arm64.apk`（约 69 MB），传到 Android 手机安装即可。
+下载 `campus-os-v0.5.1-android-arm64.apk`（约 69 MB），传到 Android 手机安装即可。
 
 - 系统要求：Android 7+（API 24+）
 - 架构：arm64-v8a（2018 年后绝大多数手机都是；32 位 / x86 模拟器暂不支持）
@@ -118,6 +118,17 @@ npm run android           # 另开终端编译 debug 包
 - 切换中文 / English、深色 / 浅色外观
 - 演示模式开关
 - 退出登录（清掉 Keychain + Redux + 持久化会话标记）
+
+---
+
+## v0.5.1 更新摘要
+
+| 项目 | 说明 |
+|---|---|
+| 图书馆预约 | 修正座位预约成功状态判断；取消预约补齐删除参数，AI 工具与原生页面保持一致 |
+| 支付宝唤起 | Android/iOS 增加 Alipay scheme 查询声明；校园卡和电费充值直接唤起支付宝 deep link |
+| 校园卡充值 | 校园卡充值接口改用 `/wx/rechard/qrcode`，匹配实际扫码充值链路 |
+| Release | [v0.5.1](https://github.com/yf-w23/campus-os/releases/tag/v0.5.1) 附 arm64 APK |
 
 ---
 
@@ -226,7 +237,7 @@ clearCookies
 - 仅支持 Android arm64-v8a；iOS 工程在仓库里但未在真机验证
 - 日程周网格依赖已同步的扁平课表；学期制 thu-info 分段课表为增强项，失败时仍可用 legacy 课表
 - 图书馆**座位**预约已实现；研讨间只读；体育场馆入口暂未开放
-- 校园卡动态「紫荆校园码」、充值、挂失、解挂、限额修改等高风险能力暂未接入；当前只做余额和流水查询
+- 校园卡动态「紫荆校园码」、挂失、解挂、限额修改等高风险能力暂未接入；充值支持支付宝跳转并需用户确认
 - 设备指纹信任过期时可能需重新 2FA
 - 课程评估、培养方案、选课等 thu-info-app 有的功能暂未做
 

@@ -104,7 +104,7 @@ export function LibrarySectionScreen({navigation, route}: Props) {
                   sectionId,
                   dateChoice,
                 );
-                if (result.status === 0) {
+                if (result.status === 1) {
                   Alert.alert(
                     '预约成功',
                     `${seat.zhName || `#${seat.id}`} 已预约` +

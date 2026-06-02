@@ -109,17 +109,15 @@ export function CampusFinanceScreen({navigation}: Props) {
     try {
       const result = await rechargeCampusCardAlipay(rawAmount);
       if (result.ok && result.alipayUrl) {
-        const canOpen = await Linking.canOpenURL(result.alipayUrl);
-        if (canOpen) {
-          await Linking.openURL(result.alipayUrl);
-        } else {
-          Alert.alert('未安装支付宝', '请安装支付宝 App 后重试，或通过校园卡网站充值。');
-        }
+        await Linking.openURL(result.alipayUrl);
       } else {
         Alert.alert('充值失败', result.message);
       }
     } catch (e) {
-      Alert.alert('充值出错', e instanceof Error ? e.message : '未知错误');
+      Alert.alert(
+        '支付宝唤起失败',
+        e instanceof Error ? e.message : '请确认已安装支付宝 App 后重试。',
+      );
     } finally {
       setRecharging(false);
     }
