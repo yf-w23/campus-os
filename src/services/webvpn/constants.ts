@@ -50,6 +50,11 @@ export const ENDPOINTS = {
   // === info.tsinghua.edu.cn 用户基本信息（用于校验 info portal session）===
   infoUserData: `${WEBVPN_ROOT_URL}/https/77726476706e69737468656265737421f9f9479369247b59700f81b9991b2631506205de/b/info/gxfw_fg/common/grjbxx`,
 
+  // === 培养方案 ===
+  programRoot: `${WEBVPN_ROOT_URL}/https/77726476706e69737468656265737421faef5b8779`,
+  programCompletion: `${WEBVPN_ROOT_URL}/https/77726476706e69737468656265737421faef5b8779/pyfa/main`,
+  programList: `${WEBVPN_ROOT_URL}/https/77726476706e69737468656265737421faef5b8779/pyfa/list`,
+
   // === 研讨间 (cab) — 需要先 fetch authAddress 拿动态 payload 再 roam ===
   libRoomBookingRoot:
     `${WEBVPN_ROOT_URL}/https/77726476706e69737468656265737421f3f643d22b396a1e6a1b80a29f5d363409e413829737d1`,

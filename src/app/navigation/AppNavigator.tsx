@@ -24,12 +24,10 @@ import {EleBalanceScreen} from '../../features/campus/EleBalanceScreen';
 import {EleRechargeScreen} from '../../features/campus/EleRechargeScreen';
 import {CampusFinanceScreen} from '../../features/campus/CampusFinanceScreen';
 import {CampusNetworkScreen} from '../../features/campus/CampusNetworkScreen';
-import {SportsScreen} from '../../features/campus/SportsScreen';
-import {SportsDetailScreen} from '../../features/campus/SportsDetailScreen';
-import {SportsBookScreen} from '../../features/campus/SportsBookScreen';
 import {LibraryNativeScreen} from '../../features/campus/LibraryNativeScreen';
 import {LibraryFloorScreen} from '../../features/campus/LibraryFloorScreen';
 import {LibrarySectionScreen} from '../../features/campus/LibrarySectionScreen';
+import {MonitorsScreen} from '../../features/settings/MonitorsScreen';
 import {AIScreen} from '../../features/ai/AIScreen';
 import {SettingsScreen} from '../../features/settings/SettingsScreen';
 import {LoginScreen} from '../../features/auth/LoginScreen';
@@ -212,9 +210,6 @@ export function AppNavigator() {
             <Stack.Screen name="CampusEleBalance" component={EleBalanceScreen} />
             <Stack.Screen name="CampusEleRecharge" component={EleRechargeScreen} />
             <Stack.Screen name="CampusReservation" component={ReservationScreen} />
-            <Stack.Screen name="CampusSports" component={SportsScreen} />
-            <Stack.Screen name="CampusSportsDetail" component={SportsDetailScreen} />
-            <Stack.Screen name="CampusSportsBook" component={SportsBookScreen} />
             <Stack.Screen name="CampusLibrary" component={LibraryNativeScreen} />
             <Stack.Screen
               name="CampusLibraryFloor"
@@ -224,6 +219,7 @@ export function AppNavigator() {
               name="CampusLibrarySection"
               component={LibrarySectionScreen}
             />
+            <Stack.Screen name="Monitors" component={MonitorsScreen} />
           </>
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} />

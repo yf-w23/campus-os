@@ -21,7 +21,7 @@ import {
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
-import {colors, radii, shadows, spacing, typography} from '../../app/theme';
+import {colors, radii, spacing, typography} from '../../app/theme';
 import {DetailHeader, EmptyState} from '../common/components/Ui';
 import {RootStackParamList} from '../../app/navigation/types';
 import {

@@ -52,6 +52,15 @@ import {
   sportsDateString,
   sportsIdInfoList,
 } from '../campus/sports';
+import {
+  getCrAvailableSemesters,
+  searchCrRemaining,
+  selectCourse,
+  deleteCourse,
+  getSelectedCourses,
+} from '../campus/courseRegistration';
+import {getDegreeProgramCompletion, getFullDegreeProgram} from '../campus/program';
+import {getNewsList, searchNewsList} from '../campus/news';
 import {fetchHomeworkDetail} from '../campus/homeworkDetail';
 import {patchAIMemory} from '../../storage/aiMemoryStorage';
 import {
@@ -68,6 +77,7 @@ import {
   UndoResult,
   VerificationResult,
 } from '../../domain/actions';
+import {Priority, Will} from '../../domain/courseRegistration';
 
 export interface AgentTool {
   name: string;
@@ -480,8 +490,7 @@ const rechargeCampusCardTool: AgentTool = {
     }
     return {ok: false, message: result.message};
   },
-  verify: async (a: any) => {
-    const amount = Number(a?.amount ?? 0);
+  verify: async () => {
     const info = await getCampusCardInfo();
     return {
       ok: true,
@@ -1775,6 +1784,299 @@ const rememberTool: AgentTool = {
   },
 };
 
+const getDegreeProgramCompletionTool: AgentTool = {
+  name: 'get_degree_program_completion',
+  title: '毕业进度查询',
+  description:
+    '查询培养方案完成进度，包括已修学分、必修/限选/选修完成情况、课程组状态等。回答"我还差多少学分毕业"之类的问题。',
+  parameters: {type: 'object', properties: {}},
+  risk: 'read',
+  permission: 'campus.program.read',
+  summarize: () => '查询培养方案完成进度',
+  run: async () => {
+    requireRealSession();
+    const prog = await getDegreeProgramCompletion();
+    return {
+      completedCredit: prog.completedCredit,
+      compulsoryCredit: prog.compulsoryCredit,
+      restrictedCredit: prog.restrictedCredit,
+      electiveCredit: prog.electiveCredit,
+      courseSets: prog.courseSet.slice(0, 50).map(set => ({
+        name: set.setName,
+        type: set.type,
+        requiredCredit: set.requiredCredit,
+        completedCredit: set.completedCredit,
+        fullCompleted: set.fullCompleted,
+        courseCount: set.course.length,
+      })),
+    };
+  },
+};
+
+const getFullDegreeProgramTool: AgentTool = {
+  name: 'get_full_degree_program',
+  title: '完整培养方案',
+  description:
+    '获取完整的培养方案课程列表，包括所有必修课组的课程清单。回答"我还需要选什么课"之类的问题。',
+  parameters: {
+    type: 'object',
+    properties: {
+      degreeId: {type: 'number', description: '可选，指定学位 ID'},
+    },
+  },
+  risk: 'read',
+  permission: 'campus.program.read',
+  summarize: () => '获取完整培养方案',
+  run: async (args: {degreeId?: number}) => {
+    requireRealSession();
+    const prog = await getFullDegreeProgram(args.degreeId);
+    return {
+      courseSets: prog.courseSet.slice(0, 50).map(set => ({
+        name: set.setName,
+        type: set.type,
+        courses: set.course.map(c => ({id: c.id, name: c.name, credit: c.credit})),
+      })),
+    };
+  },
+};
+
+const getNewsListTool: AgentTool = {
+  name: 'get_news_list',
+  title: '校园新闻列表',
+  description:
+    '获取最新的校园新闻列表，支持按频道筛选。回答"最近有什么新闻"之类的问题。',
+  parameters: {
+    type: 'object',
+    properties: {
+      page: {type: 'number', description: '页码，默认 1'},
+      length: {type: 'number', description: '每页条数，默认 20'},
+      channel: {type: 'string', description: '频道标签，如 LM_JWGG（教务通知）'},
+    },
+  },
+  risk: 'read',
+  permission: 'campus.news.read',
+  summarize: () => '获取校园新闻',
+  run: async (args: {page?: number; length?: number; channel?: string}) => {
+    requireRealSession();
+    const list = await getNewsList(args.page || 1, args.length || 20, args.channel as any);
+    return {
+      count: list.length,
+      news: list.slice(0, 30).map(n => ({
+        title: n.name,
+        date: n.date,
+        source: n.source,
+        channel: n.channel,
+        topped: n.topped,
+      })),
+    };
+  },
+};
+
+const searchNewsTool: AgentTool = {
+  name: 'search_news',
+  title: '搜索新闻',
+  description:
+    '按关键词搜索校园新闻，支持按频道筛选。回答"找关于XX的新闻"之类的问题。',
+  parameters: {
+    type: 'object',
+    properties: {
+      key: {type: 'string', description: '搜索关键词'},
+      page: {type: 'number', description: '页码，默认 1'},
+      channel: {type: 'string', description: '频道标签，可选'},
+      exactMatch: {type: 'boolean', description: '是否精确匹配，默认 false'},
+    },
+    required: ['key'],
+  },
+  risk: 'read',
+  permission: 'campus.news.read',
+  summarize: (a: {key?: string}) => `搜索新闻：${a?.key || ''}`,
+  run: async (args: {key: string; page?: number; channel?: string; exactMatch?: boolean}) => {
+    requireRealSession();
+    const list = await searchNewsList(args.page || 1, args.key, args.channel as any, args.exactMatch);
+    return {
+      count: list.length,
+      news: list.slice(0, 30).map(n => ({
+        title: n.name,
+        date: n.date,
+        source: n.source,
+      })),
+    };
+  },
+};
+
+const selectCourseTool: AgentTool = {
+  name: 'select_course',
+  title: '选课',
+  description:
+    '提交选课志愿。根据课余量查询结果选择课程，需指定选课类型和志愿等级。这是高风险操作，执行前必须经过用户确认。',
+  parameters: {
+    type: 'object',
+    properties: {
+      semesterId: {type: 'string', description: '学期 ID'},
+      priority: {
+        type: 'string',
+        enum: ['bx', 'xx', 'rx', 'ty', 'xwk', 'fxwk', 'tyk', 'cx'],
+        description: '选课类型：bx=必修, xx=限选, rx=任选, ty=体育, xwk=限选课PF, fxwk=非限选课PF, tyk=体育课PF, cx=重修',
+      },
+      courseId: {type: 'string', description: '课程号'},
+      courseSeq: {type: 'string', description: '课序号'},
+      will: {type: 'number', enum: [1, 2, 3], description: '志愿等级：1=第一志愿, 2=第二志愿, 3=第三志愿'},
+    },
+    required: ['semesterId', 'priority', 'courseId', 'courseSeq', 'will'],
+  },
+  risk: 'write_irreversible',
+  permission: 'campus.course.write',
+  requiresConfirmation: true,
+  summarize: (a: {courseId?: string; courseSeq?: string}) =>
+    `选课：${a?.courseId || ''}-${a?.courseSeq || ''}`,
+  dryRun: async (a: {semesterId: string; priority: Priority; courseId: string; courseSeq: string; will: number}) => {
+    requireRealSession();
+    const result = await searchCrRemaining({
+      semester: a.semesterId,
+      id: a.courseId,
+    });
+    const matched = result.courses.find(c => c.id === a.courseId && c.seq === Number(a.courseSeq));
+    if (!matched) {
+      throw new Error('未找到该课程');
+    }
+    if (matched.remaining <= 0) {
+      throw new Error('该课程已无课余量');
+    }
+    const priorityLabels: Record<string, string> = {
+      bx: '必修', xx: '限选', rx: '任选', ty: '体育',
+      xwk: '限选课PF', fxwk: '非限选课PF', tyk: '体育课PF', cx: '重修',
+    };
+    const willLabels: Record<number, string> = {1: '第一志愿', 2: '第二志愿', 3: '第三志愿'};
+    return {
+      title: '提交选课志愿',
+      summary: `${matched.name} · ${priorityLabels[a.priority] || a.priority} · ${willLabels[a.will] || a.will}`,
+      affectedResource: matched.name,
+      reversible: false,
+    };
+  },
+  confirmPrompt: (_a: any, preview?: ActionPreview) => ({
+    title: '确认选课',
+    message: `${preview?.summary || '该课程'}\n\n选课操作不可撤销，确认后将提交选课志愿。`,
+  }),
+  run: async (args: {semesterId: string; priority: Priority; courseId: string; courseSeq: string; will: number}) => {
+    requireRealSession();
+    const msg = await selectCourse(
+      args.semesterId,
+      args.priority as Priority,
+      args.courseId,
+      args.courseSeq,
+      args.will as Will,
+    );
+    return {ok: true, message: msg};
+  },
+};
+
+const getSelectedCoursesTool: AgentTool = {
+  name: 'get_selected_courses',
+  title: '已选课程列表',
+  description:
+    '获取当前学期已选的所有课程列表。回答"我选了什么课"之类的问题。',
+  parameters: {
+    type: 'object',
+    properties: {
+      semesterId: {type: 'string', description: '学期 ID，可选，默认当前学期'},
+    },
+  },
+  risk: 'read',
+  permission: 'campus.course.read',
+  summarize: () => '获取已选课程',
+  run: async (args: {semesterId?: string}) => {
+    requireRealSession();
+    const semesters = await getCrAvailableSemesters();
+    const targetSem = args.semesterId || semesters[0]?.id;
+    if (!targetSem) {
+      throw new Error('未找到可用学期');
+    }
+    const courses = await getSelectedCourses(targetSem);
+    return {
+      semesterId: targetSem,
+      semesterName: semesters.find(s => s.id === targetSem)?.name,
+      count: courses.length,
+      courses: courses.map(c => ({
+        type: c.type,
+        will: c.will,
+        id: c.id,
+        seq: c.seq,
+        name: c.name,
+        teacher: c.teacher,
+        time: c.time,
+        credit: c.credit,
+      })),
+    };
+  },
+};
+
+const dropCourseTool: AgentTool = {
+  name: 'drop_course',
+  title: '退课',
+  description:
+    '删除已选的课程。这是高风险操作，执行前必须经过用户确认。',
+  parameters: {
+    type: 'object',
+    properties: {
+      courseId: {type: 'string', description: '课程号'},
+      courseSeq: {type: 'string', description: '课序号'},
+      semesterId: {type: 'string', description: '学期 ID，可选，默认当前学期'},
+    },
+    required: ['courseId', 'courseSeq'],
+  },
+  risk: 'write_irreversible',
+  permission: 'campus.course.write',
+  requiresConfirmation: true,
+  summarize: (a: {courseId?: string; courseSeq?: string; name?: string}) =>
+    `退课：${a?.name || a?.courseId || ''}`,
+  dryRun: async (a: {courseId: string; courseSeq: string; semesterId?: string}) => {
+    requireRealSession();
+    const semesters = await getCrAvailableSemesters();
+    const targetSem = a.semesterId || semesters[0]?.id;
+    if (!targetSem) {
+      throw new Error('未找到可用学期');
+    }
+    const courses = await getSelectedCourses(targetSem);
+    const course = courses.find(c => c.id === a.courseId && c.seq === a.courseSeq);
+    if (!course) {
+      throw new Error('未找到该已选课程');
+    }
+    return {
+      title: '确认退课',
+      summary: `${course.name} (${course.id} - ${course.seq})`,
+      affectedResource: course.name,
+      reversible: false,
+    };
+  },
+  confirmPrompt: (_a: any, preview?: ActionPreview) => ({
+    title: '确认退课',
+    message: `${preview?.summary || '该课程'}\n\n退课操作不可撤销，请确认后再执行。`,
+    destructive: true,
+  }),
+  verify: async (args: {courseId: string; courseSeq: string; semesterId?: string}) => {
+    requireRealSession();
+    const semesters = await getCrAvailableSemesters();
+    const targetSem = args.semesterId || semesters[0]?.id;
+    if (!targetSem) {
+      return {ok: false, message: '未找到可用学期'};
+    }
+    const courses = await getSelectedCourses(targetSem);
+    const course = courses.find(c => c.id === args.courseId && c.seq === args.courseSeq);
+    return course ? {ok: false, message: '课程仍在已选列表中'} : {ok: true, message: '退课成功'};
+  },
+  run: async (args: {courseId: string; courseSeq: string; semesterId?: string}) => {
+    requireRealSession();
+    const semesters = await getCrAvailableSemesters();
+    const targetSem = args.semesterId || semesters[0]?.id;
+    if (!targetSem) {
+      throw new Error('未找到可用学期');
+    }
+    const result = await deleteCourse(targetSem, args.courseId, args.courseSeq);
+    return {success: true, message: result};
+  },
+};
+
 export const AGENT_TOOLS: AgentTool[] = [
   getTodayTool,
   getWeekScheduleTool,
@@ -1811,6 +2113,13 @@ export const AGENT_TOOLS: AgentTool[] = [
   bookLibraryRoomTool,
   cancelLibraryRoomBookingTool,
   rememberTool,
+  getDegreeProgramCompletionTool,
+  getFullDegreeProgramTool,
+  getNewsListTool,
+  searchNewsTool,
+  getSelectedCoursesTool,
+  selectCourseTool,
+  dropCourseTool,
 ];
 
 export function getToolByName(name: string): AgentTool | undefined {

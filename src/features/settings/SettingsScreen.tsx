@@ -13,6 +13,7 @@ import {
 import {useFocusEffect} from '@react-navigation/native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useDispatch, useSelector} from 'react-redux';
+import {useNavigation} from '@react-navigation/native';
 import {useTranslation} from '../../app/i18n';
 import {colors, radii, spacing, typography} from '../../app/theme';
 import {PrimaryButton} from '../common/components/Buttons';
@@ -39,31 +40,42 @@ import {
   setTrustDevice as persistTrustDevice,
   setAIProviderConfig,
 } from '../../storage/preferencesStorage';
-import {AIProviderPreset} from '../../domain/agent';
+import {AIProviderPreset, AIMemory} from '../../domain/agent';
 import {AuditRecord} from '../../domain/actions';
+import {
+  loadAIMemory,
+  clearAIMemory,
+  summarizeMemory,
+} from '../../storage/aiMemoryStorage';
 
 const presetKeys = Object.keys(AI_PRESETS) as AIProviderPreset[];
 
-const riskLabels: Record<AuditRecord['risk'], string> = {
-  read: '只读',
-  write_reversible: '可撤销写入',
-  write_irreversible: '不可逆写入',
-  payment: '支付',
-  credential: '凭证',
-};
+function getRiskLabels(t: any): Record<AuditRecord['risk'], string> {
+  return {
+    read: t.settings.riskRead,
+    write_reversible: t.settings.riskWriteReversible,
+    write_irreversible: t.settings.riskWriteIrreversible,
+    payment: t.settings.riskPayment,
+    credential: t.settings.riskCredential,
+  };
+}
 
-const confirmationLabels: Record<AuditRecord['confirmation'], string> = {
-  not_required: '无需确认',
-  approved: '已确认',
-  denied: '已取消',
-  unavailable: '无确认通道',
-};
+function getConfirmationLabels(t: any): Record<AuditRecord['confirmation'], string> {
+  return {
+    not_required: t.settings.confirmNotRequired,
+    approved: t.settings.confirmApproved,
+    denied: t.settings.confirmDenied,
+    unavailable: t.settings.confirmUnavailable,
+  };
+}
 
-const statusLabels: Record<AuditRecord['status'], string> = {
-  success: '成功',
-  error: '失败',
-  cancelled: '已取消',
-};
+function getStatusLabels(t: any): Record<AuditRecord['status'], string> {
+  return {
+    success: t.settings.statusSuccess,
+    error: t.settings.statusError,
+    cancelled: t.settings.statusCancelled,
+  };
+}
 
 function formatAuditTime(value: string): string {
   const d = new Date(value);
@@ -107,9 +119,19 @@ function Row({label, value, onPress, right, divider}: RowProps) {
   );
 }
 
+function MemoryField({label, value}: {label: string; value: string}) {
+  return (
+    <View style={styles.memoryField}>
+      <Text style={styles.memoryFieldLabel}>{label}</Text>
+      <Text style={styles.memoryFieldValue}>{value}</Text>
+    </View>
+  );
+}
+
 export function SettingsScreen() {
   const t = useTranslation();
   const dispatch = useDispatch();
+  const navigation = useNavigation<any>();
   const auth = useSelector(selectAuth);
   const settings = useSelector(selectSettings);
   const {provider} = useSelector(selectAI);
@@ -123,6 +145,12 @@ export function SettingsScreen() {
     provider.preset === 'custom' ? provider.model : '',
   );
   const [auditRecords, setAuditRecords] = useState<AuditRecord[]>([]);
+  const [aiMemory, setAiMemory] = useState<AIMemory>({});
+  const [memoryExpanded, setMemoryExpanded] = useState(false);
+
+  const riskLabels = getRiskLabels(t);
+  const confirmationLabels = getConfirmationLabels(t);
+  const statusLabels = getStatusLabels(t);
 
   useFocusEffect(
     useCallback(() => {
@@ -131,6 +159,13 @@ export function SettingsScreen() {
         .then(records => {
           if (active) {
             setAuditRecords(records);
+          }
+        })
+        .catch(() => undefined);
+      loadAIMemory()
+        .then(memory => {
+          if (active) {
+            setAiMemory(memory);
           }
         })
         .catch(() => undefined);
@@ -146,7 +181,7 @@ export function SettingsScreen() {
       const baseUrl = customBaseUrl.trim();
       const model = customModel.trim();
       if (!baseUrl || !model) {
-        Alert.alert('自定义服务', '请填写 Base URL 与模型名');
+        Alert.alert(t.settings.customProviderTitle, '请填写 Base URL 与模型名');
         return;
       }
       config = {...AI_PRESETS.custom, baseUrl, model};
@@ -189,18 +224,50 @@ export function SettingsScreen() {
   };
 
   const handleClearAuditRecords = () => {
-    Alert.alert('清空 AI 操作记录', '这只会清除本机审计记录，不影响对话历史。', [
-      {text: '取消', style: 'cancel'},
-      {
-        text: '清空',
-        style: 'destructive',
-        onPress: async () => {
-          await clearActionAuditRecords();
-          setAuditRecords([]);
+    Alert.alert(
+      t.settings.clearRecordsConfirmTitle,
+      t.settings.clearRecordsConfirmMsg,
+      [
+        {text: t.settings.cancel, style: 'cancel'},
+        {
+          text: t.settings.clear,
+          style: 'destructive',
+          onPress: async () => {
+            await clearActionAuditRecords();
+            setAuditRecords([]);
+          },
         },
-      },
-    ]);
+      ],
+    );
   };
+
+  const handleClearMemory = () => {
+    Alert.alert(
+      t.settings.clearMemoryConfirmTitle,
+      t.settings.clearMemoryConfirmMsg,
+      [
+        {text: t.settings.cancel, style: 'cancel'},
+        {
+          text: t.settings.clear,
+          style: 'destructive',
+          onPress: async () => {
+            await clearAIMemory();
+            setAiMemory({});
+          },
+        },
+      ],
+    );
+  };
+
+  const hasMemory = Boolean(
+    aiMemory.favoriteLibrary ||
+    aiMemory.favoriteSection ||
+    aiMemory.defaultRechargeAmount ||
+    (aiMemory.watchedCourses?.length) ||
+    (aiMemory.notes?.length),
+  );
+
+  const memorySummary = summarizeMemory(aiMemory);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -210,10 +277,10 @@ export function SettingsScreen() {
         <ScreenHeader
           eyebrow={t.tabs.settings}
           title={t.settings.title}
-          subtitle={auth.demoMode ? '演示模式' : auth.session.studentId ?? '账号与偏好'}
+          subtitle={auth.demoMode ? t.settings.demoMode : auth.session.studentId ?? t.settings.account}
         />
 
-        <Text style={[styles.groupHeader, styles.groupHeaderFirst]}>偏好</Text>
+        <Text style={[styles.groupHeader, styles.groupHeaderFirst]}>{t.settings.preferences}</Text>
         <View style={styles.group}>
           <Row
             label={t.settings.demoMode}
@@ -244,6 +311,13 @@ export function SettingsScreen() {
             value={settings.locale === 'zh' ? '中文' : 'English'}
             onPress={handleToggleLocale}
             right={<Text style={styles.chev}>›</Text>}
+            divider
+          />
+          <Row
+            label={t.settings.monitors}
+            value={t.monitors.title}
+            onPress={() => navigation.navigate('Monitors')}
+            right={<Text style={styles.chev}>›</Text>}
           />
         </View>
 
@@ -272,7 +346,7 @@ export function SettingsScreen() {
           <>
             <TextInput
               style={styles.input}
-              placeholder="Base URL（如 https://api.example.com/v1）"
+              placeholder={t.settings.customProviderPlaceholderBaseUrl}
               placeholderTextColor={colors.textMuted}
               value={customBaseUrl}
               onChangeText={setCustomBaseUrl}
@@ -282,7 +356,7 @@ export function SettingsScreen() {
             />
             <TextInput
               style={styles.input}
-              placeholder="模型名（如 gpt-4o-mini）"
+              placeholder={t.settings.customProviderPlaceholderModel}
               placeholderTextColor={colors.textMuted}
               value={customModel}
               onChangeText={setCustomModel}
@@ -305,10 +379,10 @@ export function SettingsScreen() {
           <PrimaryButton label={t.settings.save} onPress={handleSaveProvider} />
         </View>
 
-        <Text style={styles.groupHeader}>AI 操作记录</Text>
+        <Text style={styles.groupHeader}>{t.settings.aiActionRecords}</Text>
         <View style={styles.auditGroup}>
           {auditRecords.length === 0 ? (
-            <Text style={styles.auditEmpty}>暂无 AI 工具操作记录</Text>
+            <Text style={styles.auditEmpty}>{t.settings.noAiActionRecords}</Text>
           ) : (
             auditRecords.slice(0, 6).map((record, index) => (
               <View
@@ -344,7 +418,7 @@ export function SettingsScreen() {
                 ) : null}
                 {record.verification ? (
                   <Text style={styles.auditDetail} numberOfLines={1}>
-                    验证：{record.verification.ok ? '通过' : '未通过'}
+                    验证：{record.verification.ok ? t.settings.verifyPass : t.settings.verifyFail}
                     {record.verification.message
                       ? ` · ${record.verification.message}`
                       : ''}
@@ -357,8 +431,67 @@ export function SettingsScreen() {
         {auditRecords.length > 0 ? (
           <View style={styles.auditActions}>
             <PrimaryButton
-              label={`清空操作记录（${auditRecords.length}）`}
+              label={`${t.settings.clearActionRecords}（${auditRecords.length}）`}
               onPress={handleClearAuditRecords}
+              variant="ghost"
+            />
+          </View>
+        ) : null}
+
+        <Text style={styles.groupHeader}>{t.settings.aiMemory}</Text>
+        <View style={styles.auditGroup}>
+          {hasMemory ? (
+            <>
+              <Pressable
+                style={styles.memorySummaryRow}
+                onPress={() => setMemoryExpanded(!memoryExpanded)}>
+                <Text style={styles.memorySummaryText} numberOfLines={memoryExpanded ? undefined : 3}>
+                  {memorySummary}
+                </Text>
+                <Text style={styles.memoryExpandHint}>
+                  {memoryExpanded ? t.settings.collapse : t.settings.expand}
+                </Text>
+              </Pressable>
+              {memoryExpanded ? (
+                <View style={styles.memoryDetails}>
+                  {aiMemory.favoriteLibrary ? (
+                    <MemoryField
+                      label={t.settings.memoryFavoriteLibrary}
+                      value={`${aiMemory.favoriteLibrary}${
+                        aiMemory.favoriteSection ? ` · ${aiMemory.favoriteSection}` : ''
+                      }`}
+                    />
+                  ) : null}
+                  {aiMemory.defaultRechargeAmount ? (
+                    <MemoryField
+                      label={t.settings.memoryDefaultRecharge}
+                      value={`${aiMemory.defaultRechargeAmount} 元`}
+                    />
+                  ) : null}
+                  {aiMemory.watchedCourses?.length ? (
+                    <MemoryField
+                      label={t.settings.memoryWatchedCourses}
+                      value={aiMemory.watchedCourses.join('、')}
+                    />
+                  ) : null}
+                  {aiMemory.notes?.length ? (
+                    <MemoryField
+                      label={t.settings.memoryNotes}
+                      value={aiMemory.notes.join('；')}
+                    />
+                  ) : null}
+                </View>
+              ) : null}
+            </>
+          ) : (
+            <Text style={styles.auditEmpty}>{t.settings.noAiMemory}</Text>
+          )}
+        </View>
+        {hasMemory ? (
+          <View style={styles.auditActions}>
+            <PrimaryButton
+              label={t.settings.clearAiMemory}
+              onPress={handleClearMemory}
               variant="ghost"
             />
           </View>
@@ -551,5 +684,44 @@ const styles = StyleSheet.create({
   bottomActions: {
     marginTop: spacing.xl + spacing.md,
     gap: spacing.sm,
+  },
+  memorySummaryRow: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    gap: 8,
+  },
+  memorySummaryText: {
+    ...typography.body,
+    color: colors.text,
+    lineHeight: 22,
+  },
+  memoryExpandHint: {
+    ...typography.caption,
+    color: colors.primary,
+    fontWeight: '500',
+  },
+  memoryDetails: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.divider,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: 6,
+  },
+  memoryField: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  memoryFieldLabel: {
+    ...typography.caption,
+    color: colors.textMuted,
+  },
+  memoryFieldValue: {
+    ...typography.caption,
+    color: colors.text,
+    fontWeight: '500',
+    flex: 1,
+    textAlign: 'right',
+    marginLeft: spacing.md,
   },
 });

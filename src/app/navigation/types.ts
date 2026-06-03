@@ -7,8 +7,6 @@ export type RootTabParamList = {
   Settings: undefined;
 };
 
-import type {SportsVenueInfo} from '../../domain/sports';
-
 export type RootStackParamList = {
   Login: undefined;
   Main: undefined;
@@ -28,16 +26,8 @@ export type RootStackParamList = {
   /** 电费充值（native）*/
   CampusEleRecharge: undefined;
   CampusReservation: undefined;
-  /** 体育场馆预约 */
-  CampusSports: undefined;
-  CampusSportsDetail: {info: SportsVenueInfo};
-  CampusSportsBook: {
-    info: SportsVenueInfo;
-    date: string;
-    phone: string;
-    period: string;
-    field: {id: string; name: string; cost: number};
-  };
+  /** 监控管理 */
+  Monitors: undefined;
   /** 图书馆座位 / 研读间 native 浏览页 */
   CampusLibrary: undefined;
   /** 单个楼层的分区列表（楼层 → 分区） */

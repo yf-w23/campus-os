@@ -81,8 +81,6 @@ const accountBaseInfo = {
   cardId: '',
 };
 
-let cardLoginLock: Promise<void> | null = null;
-
 function parseDate(value: unknown): string | undefined {
   if (!value) {
     return undefined;

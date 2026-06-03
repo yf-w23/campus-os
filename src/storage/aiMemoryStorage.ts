@@ -65,6 +65,14 @@ export async function patchAIMemory(patch: Partial<AIMemory>): Promise<AIMemory>
   });
 }
 
+export async function clearAIMemory(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(KEY);
+  } catch {
+    // 忽略
+  }
+}
+
 /** 把记忆压成一段适合塞进 system prompt 的中文摘要 */
 export function summarizeMemory(memory: AIMemory): string {
   const parts: string[] = [];

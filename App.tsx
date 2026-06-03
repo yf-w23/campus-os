@@ -1,7 +1,7 @@
 import React, {useEffect, useState} from 'react';
 import {Provider, useDispatch} from 'react-redux';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
-import {ActivityIndicator, StatusBar, Text, View} from 'react-native';
+import {ActivityIndicator, AppState, StatusBar, Text, View} from 'react-native';
 import {store, AppDispatch} from './src/state/store';
 import {setAuthenticated, setDemoMode} from './src/state/slices/authSlice';
 import {
@@ -14,7 +14,6 @@ import {
   setLocale,
   setTrustDevice,
   setAIApiKeyConfigured,
-  setColorScheme,
 } from './src/state/slices/settingsSlice';
 import {hydrateConversations, setProvider} from './src/state/slices/aiSlice';
 import {hydratePersonalEvents} from './src/state/slices/scheduleSlice';
@@ -29,7 +28,6 @@ import {
 } from './src/storage/conversationsStorage';
 import {
   getAIProviderConfig,
-  getColorScheme,
   getLocale,
   getSessionStudentId,
   getTrustDevice,
@@ -38,37 +36,26 @@ import {
 import {loadAIApiKey} from './src/storage/secureStorage';
 import {tsinghuaAuthService} from './src/services/auth/tsinghuaAuth';
 import {syncCampusData} from './src/state/thunks/syncCampusData';
-import {applyScheme, colors} from './src/app/theme';
-import type {ColorScheme} from './src/app/theme';
+import {runWorkflowChecks} from './src/services/workflow/WorkflowEngine';
+import {colors} from './src/app/theme';
 
-/**
- * Bootstrap 不在模块顶层 import AppNavigator —— 等 colorScheme 落盘后再
- * 动态 import，这样所有屏幕模块顶层的 StyleSheet.create 才能拿到正确调色板。
- */
 function Bootstrap() {
   const dispatch = useDispatch<AppDispatch>();
   const [NavComponent, setNavComponent] = useState<React.ComponentType | null>(
     null,
   );
-  const [scheme, setScheme] = useState<ColorScheme>('light');
   const [bootError, setBootError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
-        const [demoMode, locale, trustDevice, providerConfig, loadedScheme] =
+        const [demoMode, locale, trustDevice, providerConfig] =
           await Promise.all([
             isDemoMode(),
             getLocale(),
             getTrustDevice(),
             getAIProviderConfig(),
-            getColorScheme(),
           ]);
-
-        // 必须先 applyScheme 再加载 AppNavigator —— 顺序敏感。
-        applyScheme(loadedScheme);
-        setScheme(loadedScheme);
-        dispatch(setColorScheme(loadedScheme));
 
         dispatch(setDemoMode(demoMode));
         if (demoMode) {
@@ -80,8 +67,6 @@ function Bootstrap() {
         dispatch(setTrustDevice(trustDevice));
 
         if (providerConfig) {
-          // 预置厂商（非自定义）始终用最新的 baseUrl/model 默认值，
-          // 避免旧版持久化的模型名（如 deepseek-chat）盖掉新默认。
           const refreshed =
             providerConfig.preset !== 'custom'
               ? AI_PRESETS[providerConfig.preset]
@@ -91,7 +76,6 @@ function Bootstrap() {
           dispatch(setAIApiKeyConfigured(Boolean(apiKey)));
         }
 
-        // 载入持久化的 AI 对话历史
         const [persistedAI, persistedEvents] = await Promise.all([
           loadConversations(),
           loadPersonalEvents(),
@@ -103,10 +87,6 @@ function Bootstrap() {
           dispatch(hydrateLearningSchedule(cachedSchedule));
         }
 
-        // === 持久化登录恢复（对齐 THU Info）===
-        // 上次登录过 + Keychain 仍有凭证 → 乐观进入主界面，后台静默续期会话。
-        // Cookie 过期时，首屏 syncCampusData 会经 withSessionRecovery 用保存的
-        // 学号密码 + 复用的设备指纹自动重登，通常无需再次 2FA。
         if (!demoMode) {
           const sessionStudentId = await getSessionStudentId();
           if (sessionStudentId) {
@@ -126,7 +106,6 @@ function Bootstrap() {
           }
         }
 
-        // 用 require 而非 import()，避免真机调试时分包加载失败导致永久黑屏。
         const mod = require('./src/app/navigation/AppNavigator') as typeof import(
           './src/app/navigation/AppNavigator'
         );
@@ -139,12 +118,26 @@ function Bootstrap() {
     })();
   }, [dispatch]);
 
-  const isLight = scheme === 'light';
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', nextState => {
+      if (nextState === 'active') {
+        const check = async () => {
+          try {
+            await runWorkflowChecks();
+          } catch {
+            // 静默失败
+          }
+        };
+        check();
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   return (
     <>
       <StatusBar
-        barStyle={isLight ? 'dark-content' : 'light-content'}
+        barStyle="dark-content"
         backgroundColor={colors.background}
         translucent={false}
       />
@@ -182,7 +175,6 @@ function Bootstrap() {
 }
 
 function App(): React.JSX.Element {
-  // 防抖持久化个人日程
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let lastEvents = store.getState().schedule.personalEvents;
@@ -203,7 +195,6 @@ function App(): React.JSX.Element {
     };
   }, []);
 
-  // 防抖持久化 AI 对话历史：会话数组引用一变就保存（包含流式追加，debounce 合并）。
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let lastConversations = store.getState().ai.conversations;

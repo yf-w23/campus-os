@@ -1,13 +1,3 @@
-/**
- * 单一浅色调色板。
- *
- * App 仅保留浅色模式：surface 用极淡的灰带蓝调（off-white），不刺眼，
- * 强调色（accent）统一用品牌紫，保证一致。
- * `ColorScheme` 类型保留为字面量 'light'，仅为兼容历史调用签名。
- */
-
-export type ColorScheme = 'light';
-
 export interface Palette {
   primary: string;
   primaryDark: string;
@@ -48,7 +38,6 @@ export interface Palette {
 }
 
 export const lightColors: Palette = {
-  // 同色系强调色 — 在浅底上稍稍加深以保持对比度
   primary: '#7C5CFA',
   primaryDark: '#5B3EE0',
   primaryMuted: 'rgba(124, 92, 250, 0.10)',
@@ -86,7 +75,3 @@ export const lightColors: Palette = {
   cardShadow: 'rgba(15, 23, 42, 0.06)',
   overlay: 'rgba(15, 23, 42, 0.45)',
 };
-
-export function getPalette(_scheme: ColorScheme = 'light'): Palette {
-  return lightColors;
-}

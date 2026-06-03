@@ -23,7 +23,6 @@ import {
   getCampusCardInfo,
   getCampusCardTransactions,
   rechargeCampusCardAlipay,
-  buildAlipayUrl,
 } from '../../services/campus/campusCard';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CampusFinance'>;

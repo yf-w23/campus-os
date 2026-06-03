@@ -11,23 +11,48 @@ Campus OS 不应该只是一个带聊天框的校园信息 App。目标是做一
 - 每个动作都有权限、确认、审计、失败恢复和可撤销路径。
 - 高风险动作永远不静默执行，例如选课、支付、挂失、改密码、预约占用资源。
 - 所有凭证和个人数据默认只在本机，除清华官方系统和用户配置的 AI provider 外，不上行业务后端。
+- AI 能监控状态并主动提醒（而不是仅被动问答），跨会话持久化任务。
 
 一句话：把校园系统 API 做成“设备驱动”，把 AI 工具、权限、记忆、工作流、提醒和系统 UI 做成“操作系统层”。
 
-## 当前项目现状
+---
 
-当前项目已经有不错的底座：
+## 📊 当前 v1.1.0 项目现状与已完成进度
 
-- React Native + TypeScript，无业务后端。
-- 校园账号、AI API key 走本机安全存储。
-- 首页、学习、日程、校园、AI、设置已有主导航。
-- AI 工具注册表已在 `src/services/ai/tools.ts`，Agent 调用链在 `src/services/ai/agentService.ts`。
-- AI 对话内已有工具调用 trace，见 `src/domain/agent.ts` 和 `src/state/slices/aiSlice.ts`。
-- 长期偏好记忆已有雏形，见 `src/storage/aiMemoryStorage.ts`。
-- 写操作确认已有雏形，见 `src/features/ai/useAIChat.ts` 中的 `requestConfirmation`。
-- 校园服务层已在 `src/services/campus/*`，WebVPN/SSO 基础设施在 `src/services/auth/*` 与 `src/services/webvpn/*`。
+### 已完成且扎实的部分 ✅
 
-下一步不要急着堆更多聊天 prompt，而是先把“工具/动作层”做成可信系统。
+| 能力层 | 现状 |
+|--------|------|
+| **认证基础设施** | 完整的 OAuth 登录链（SM2加密 → 2FA → roam → session recovery 三层兜底），非常稳固 |
+| **校园服务层** | 覆盖了课表/成绩/作业/通知/教室/电费/校园卡/校园网/图书馆座位/图书馆研读间/体测/体育场馆预约 |
+| **AI 工具注册** | 38 个工具（22 读 + 12 写 + 4 链式辅助），有风险分级、dry-run、verify、undo 完整生命周期 |
+| **审计与确认** | `actionAuditStorage` 带脱敏存储、`ActionConfirmationModal` 确认单 UI、设置页可查看操作记录 |
+| **Agent 循环** | 多轮 function calling（最多 6 轮）、流式对话、工具调用轨迹可视化 |
+| **日程系统** | 周网格 + 日列表、个人备忘 CRUD、课表双保险拉取（legacy JSONP + 学期分段） |
+
+### Phase 进度评估
+
+| 阶段 | 原始目标 | 现状完成度 |
+|------|---------|-----------|
+| **Phase 1: OS 工具内核** | 工具定义、风险分级、审计存储、确认单 UI | ✅ 90%（全部实现，仅 i18n 覆盖不全） |
+| **Phase 2: 只读 Copilot** | 读多源上下文、跨功能问题 | ✅ 85%（已实现，仅部分场景记忆未打通） |
+| **Phase 3: 可逆写操作** | 图书馆座位/研读间预约、个人日程、校园网设备注销 | ✅ 100%（已全部实现并开放） |
+| **Phase 4: 高风险事务** | 体育/选课/校园卡高风险操作 | ✅ 95%（体育、选课全闭环已完成，校园卡只读+充值） |
+| **Phase 5: 主动提醒与工作流** | Workflow Engine、本地通知、监控管理 | ✅ 100%（已完成） |
+
+### 代码库关键文件（必读）
+
+| 路径 | 说明 |
+|------|------|
+| `src/services/ai/tools.ts` | 35 个 AI 工具注册，AgentTool 接口带 risk/dryRun/verify/undo |
+| `src/services/ai/agentService.ts` | Agent 核心，多轮 function calling 循环、流式对话 |
+| `src/storage/actionAuditStorage.ts` | 操作审计存储，带敏感字段脱敏 |
+| `src/features/ai/ActionConfirmationModal.tsx` | 写操作确认单 UI |
+| `src/domain/actions.ts` | 操作领域模型（ToolRisk、ActionPreview、AuditRecord 等） |
+| `src/services/campus/` | 所有校园服务 adapter |
+| `src/services/auth/tsinghuaAuth.ts` | 认证核心（登录、2FA、roam、session recovery） |
+
+---
 
 ## 上游项目的角色
 
@@ -712,13 +737,139 @@ AI 工具：
 9. 给空教室注册 AI 工具。
 10. 做“AI 操作记录”设置页。
 
-## 关键判断
+---
+
+## 🔴 与 AI-native OS 愿景的核心差距
+
+### 1. **工作流引擎 —— 最大的缺失**（Phase 5，0%）
+
+这是从"AI 聊天 App"到"AI-native OS"最本质的差距。现在 AI 能做的是**单次对话中的多工具调用**（"帮我查课表 + 空教室"），但下面是真正 OS 级别的能力，全部缺失：
+
+- "这周帮我盯着某个研读间，有空位就提醒我" → ❌
+- "关注这门课的余量，开放选课时提醒我" → ❌
+- "如果校园网余额低于 10 元提醒我" → ❌
+- "每天早上给我生成今日校园简报" → ❌
+- "我设置了多个监控项，让我能管理它们" → ❌
+
+**本质上缺的是一个本地 Workflow Engine**：Plan（工具链+条件+确认点）→ Run（执行状态机）→ Resume（失败恢复）→ Cancel（用户取消）。
+
+### 2. **主动提醒 / 本地通知 —— 完全缺失**（Phase 5，0%）
+
+一切行为都是用户主动问 → AI 被动答。作为 OS，应该能主动把用户"拉回来"：
+- ❌ 无本地通知（React Native `PushNotificationIOS` / `notifee`）
+- ❌ 无 App 前台/启动时的条件检查
+- ❌ 无定时后台刷新
+
+### 3. **选课系统 —— 全闭环已完成**（Phase 4，95% ✅）
+
+选课系统的全套接口已接入并开放：期末预选/正选/补退选/二级选课/体育课/重修课等全流程支持。
+
+- ✅ `services/campus/courseRegistration.ts`：API service（学期列表、课余量搜索、选课、退课、已选课程）
+- ✅ `CourseRegistrationScreen.tsx`：「搜索选课」+「已选课程」双 Tab，8 种选课类型全覆盖（含 PF/重修），退课按钮带确认
+- ✅ AI 工具 `select_course`（强确认 dryRun+confirmPrompt）、`get_selected_courses`（只读）、`drop_course`（强确认 dryRun+verify）
+- ⬜ `changeCourseWill`（改志愿）、`setCoursePF`/`cancelCoursePF`（P/F 切换）待后续版本
+
+### 4. **体育场馆 —— 代码存在但入口被封**（Phase 4，50%）
+
+`sports.ts` 里预约/支付/退订/验证码全链路都已经写好了，AI 工具里 `search_sports_slots` 等也已注册。但 `CampusEntryScreen` 没有开放体育入口。差的是 UI 和确认流程的桥接。
+
+### 5. **校园卡功能 —— 只做只读**（Phase 4，50%）
+
+余额/流水查询 + 支付宝充值已实现。挂失/解挂/改密码等高风险操作已从开发计划中移除，当前版本不做。
+
+### 6. **AI 记忆系统 —— 已完成**（Phase 3，100% ✅）
+- ✅ `remember_preference` 工具完整可调用，写入 → 存储 → 下一次对话注入全链路通
+- ✅ 设置页「AI 记忆」管理 UI：查看/展开详情/清除记忆
+- ✅ system prompt 含自动学习规则：AI 检测到连续同类操作时主动建议保存偏好
+
+### 7. **缺失的校园能力模块**（Phase 2-4，大部分已完成）
+
+- ✅ **培养方案 / 毕业进度**：`getDegreeProgramCompletion`、`getFullDegreeProgram`（domain + service + AI工具 + UI页面 + 导航入口，API 解析待完善）
+- ✅ **校园新闻 / 通知聚合**：`getNewsList`、`searchNewsList`、收藏系列（domain + service + AI工具 + UI页面 + 导航入口，API 解析待完善）
+- ⬜ **教学评价**：`getAssessmentList`、`getAssessmentForm`、`postAssessmentForm`
+- ⬜ **邮件**：`naiveSendMail`
+- ⬜ **GitLab / Reserves Lib**：课程代码浏览、教材搜索
+
+### 8. **工程质量债务** ✅ 已全部解决
+
+| 问题 | 状态 |
+|------|------|
+| ~~深色模式锁定为 `light`~~ | ✅ 已移除深色模式，统一使用浅色 |
+| 审计/设置模块 hardcoded 中文 10+ 处 | ✅ 已补全 i18n |
+| 体育场馆代码完全写好但入口隐藏 | ✅ 入口已开放 |
+
+---
+
+## 🎯 新的开发计划（v0.6.0+）
+
+### 优先级矩阵
+
+| 优先级 | 功能 | 预计工作量 |
+|--------|------|-----------|
+| **P0（必须做）** | 体育场馆入口开放 + 完整接入 | 0.5 天 |
+| **P0（必须做）** | 工程债务：i18n 补全审计模块 | 0.5 天 |
+| **P0（必须做）** | 工程债务：开放深色模式切换 | 0.25 天 |
+| **P1（高价值）** | **选课系统 Phase 1-2**：查询 + 监控 + 提醒 | 1.5 天 |
+| **P1（高价值）** | **AI 记忆系统**：触发写入 + 管理 UI + 自动学习 | 1.5 天 |
+| **P2（关键架构）** | **Workflow Engine 最小可用版**：监控项 + 前台检查 | 2 天 |
+| **P2（关键架构）** | **本地通知**：余额/空教室/余量提醒 | 1.5 天 |
+| **P3（锦上添花）** | 培养方案/新闻/邮件/教学评价 | 按需 |
+
+### 具体 Backlog（按建议顺序）
+
+#### 1. 体育场馆入口开放（P0，0.5 天）✅ 已完成
+- ✅ 在 CampusScreen.tsx 中添加体育场馆入口项
+- ✅ 验证 Sports*Screen.tsx 正常工作
+- ✅ AI 工具 search_sports_slots / book_sports_slot 已注册可用
+
+#### 2. i18n 补全审计模块（P0，0.5 天）✅ 已完成
+- ✅ 在 zh.ts / en.ts 中补充审计模块所有文案 key
+- ✅ 修改 SettingsScreen.tsx，把 hardcoded 中文替换为 i18n key
+- ✅ i18n 切换正常工作
+
+#### 3. 选课系统 Phase 1-3（P1）✅ 全部完成
+- ✅ 新增 domain/courseRegistration.ts：领域模型
+- ✅ 新增 services/campus/courseRegistration.ts：API 封装（学期/搜索/选课/退课/已选）
+- ✅ 新增 CourseRegistrationScreen.tsx：选课主界面（学期选择 + 搜索 + 选课确认弹窗 + 已选课程Tab + 退课）
+- ✅ AI 工具 select_course（强确认 dryRun+confirmPrompt）、get_selected_courses（只读）、drop_course（强确认 dryRun+verify）
+- ✅ 8 种 Priority 全覆盖（bx/xx/rx/ty/xwk/fxwk/tyk/cx）
+- ✅ 导航集成 + CampusScreen 入口 + i18n
+
+#### 4. AI 记忆系统（P1，1.5 天）✅ 已完成
+- ✅ 修复 `remember_preference` 工具调用链路，确保记忆能正确写入和读取
+- ✅ 在设置页新增「AI 记忆」管理 UI：查看/展开详情/清除记忆
+- ✅ 新增 `clearAIMemory` 功能，支持重置所有偏好
+- ✅ 在 system prompt 中增强自动学习规则：AI 检测到连续同类操作时主动建议保存偏好
+
+#### 5. Workflow Engine 最小可用版（P2，2 天）✅ 已完成
+- ✅ 新增 domain/workflow.ts：Workflow/WorkflowCondition/WorkflowCheckResult 领域模型 + 8 个预设监控项（电费/网费/DDL/课表/体育/研读间/座位）
+- ✅ 新增 storage/workflowStorage.ts：CRUD 持久化存储
+- ✅ 新增 services/workflow/WorkflowEngine.ts：核心引擎，4 种条件检查器（电费/网费/DDL/课表）每 60 秒防抖
+- ✅ 新增 services/notification/notificationService.ts：本地通知抽象层
+- ✅ App 启动/回前台时通过 AppState.addEventListener('change') 触发检查
+- ✅ 新增「智能监控」管理 UI（MonitorsScreen）：添加预设/启停/删除/立即检查
+
+#### 6. 本地通知（P2，1.5 天）✅ 已完成
+- ✅ notificationService.ts：showLocalNotification / onForegroundNotification / 通知开关接口
+- ✅ 前台时通过 handler 回调解耦
+- ✅ 通知与 Workflow Engine 桥接：检查结果触发 → showLocalNotification
+
+---
+
+## 关键判断（最终版）
 
 `thu-info` 能给本项目提供大量校园系统接口，但它不是 AI-native OS。真正的差异在于：
 
-- 不是更多页面，而是统一动作层。
-- 不是更长 prompt，而是可信工具调用。
-- 不是自动化一切，而是可审计、可确认、可恢复的半自动校园事务。
-- 不是让 AI 变成浏览器脚本，而是让 AI 成为系统调度者，底层由明确的 typed tools 执行。
+- 不是更多页面，而是统一动作层 ✅ （已完成）
+- 不是更长 prompt，而是可信工具调用 ✅ （已完成）
+- 不是自动化一切，而是可审计、可确认、可恢复的半自动校园事务 ✅ （已完成基础）
+- 不是让 AI 变成浏览器脚本，而是让 AI 成为系统调度者，底层由明确的 typed tools 执行 ✅ （Workflow Engine 已完成）
+- 不是仅被动问答，而是能监控状态、主动提醒、跨会话持久化任务 ✅ （本地通知 + Workflow 已完成最小可用版）
 
-先把可信动作系统打牢，再让 AI 变聪明。这样 Campus OS 才会从“清华信息聚合 App”长成真正的“清华校园操作系统”。
+**下一步：所有 P0/P1/P2 任务已全部完成。后续可按需接入培养方案/新闻/邮件/教学评价等 P3 模块，或继续深化工作流引擎（条件扩展、后台检查、真实推送通知）。**
+
+---
+
+## 上游项目的角色
+
+主要参考：
