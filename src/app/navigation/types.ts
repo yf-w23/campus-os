@@ -1,6 +1,6 @@
 export type RootTabParamList = {
   Home: undefined;
-  Learning: undefined;
+  Learning: {initialTab?: 'homework'; openAddDeadline?: boolean} | undefined;
   Schedule: undefined;
   Campus: undefined;
   AI: {initialQuestion?: string} | undefined;
@@ -19,6 +19,12 @@ export type RootStackParamList = {
   CampusGrades: undefined;
   CampusPEtest: undefined;
   CampusDormitory: undefined;
+  CampusLaundry: undefined;
+  CampusLaundryDetail: {
+    id: string;
+    name: string;
+    platform: 'jieli' | 'haile';
+  };
   CampusFinance: undefined;
   CampusNetwork: undefined;
   /** 电费余额（native）*/

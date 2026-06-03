@@ -17,10 +17,15 @@ import {
 } from './src/state/slices/settingsSlice';
 import {hydrateConversations, setProvider} from './src/state/slices/aiSlice';
 import {hydratePersonalEvents} from './src/state/slices/scheduleSlice';
+import {hydrateManualDeadlines} from './src/state/slices/manualDeadlineSlice';
 import {
   loadPersonalEvents,
   savePersonalEvents,
 } from './src/storage/personalEventsStorage';
+import {
+  loadManualDeadlines,
+  saveManualDeadlines,
+} from './src/storage/manualDeadlinesStorage';
 import {AI_PRESETS} from './src/services/ai/agentService';
 import {
   loadConversations,
@@ -76,12 +81,14 @@ function Bootstrap() {
           dispatch(setAIApiKeyConfigured(Boolean(apiKey)));
         }
 
-        const [persistedAI, persistedEvents] = await Promise.all([
+        const [persistedAI, persistedEvents, persistedDeadlines] = await Promise.all([
           loadConversations(),
           loadPersonalEvents(),
+          loadManualDeadlines(),
         ]);
         dispatch(hydrateConversations(persistedAI));
         dispatch(hydratePersonalEvents(persistedEvents));
+        dispatch(hydrateManualDeadlines(persistedDeadlines));
         const cachedSchedule = await loadLearningScheduleCache();
         if (cachedSchedule.length > 0) {
           dispatch(hydrateLearningSchedule(cachedSchedule));
@@ -184,14 +191,42 @@ function App(): React.JSX.Element {
         return;
       }
       lastEvents = events;
-      if (timer) clearTimeout(timer);
+      if (timer) {
+        clearTimeout(timer);
+      }
       timer = setTimeout(() => {
         void savePersonalEvents(events);
       }, 400);
     });
     return () => {
       unsubscribe();
-      if (timer) clearTimeout(timer);
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let lastDeadlines = store.getState().manualDeadlines.items;
+    const unsubscribe = store.subscribe(() => {
+      const {items, hydrated} = store.getState().manualDeadlines;
+      if (!hydrated || items === lastDeadlines) {
+        return;
+      }
+      lastDeadlines = items;
+      if (timer) {
+        clearTimeout(timer);
+      }
+      timer = setTimeout(() => {
+        void saveManualDeadlines(items);
+      }, 400);
+    });
+    return () => {
+      unsubscribe();
+      if (timer) {
+        clearTimeout(timer);
+      }
     };
   }, []);
 

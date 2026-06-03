@@ -31,6 +31,7 @@ import {
   selectActiveConversationId,
   selectConversations,
   selectLearning,
+  selectSettings,
 } from '../../state/selectors';
 import {AppDispatch} from '../../state/store';
 import {Chip} from '../common/components/Chip';
@@ -44,7 +45,7 @@ type AIScreenProps = CompositeScreenProps<
   NativeStackScreenProps<RootStackParamList>
 >;
 
-function relativeTime(iso: string): string {
+function relativeTime(iso: string, locale: 'zh' | 'en'): string {
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) {
     return '';
@@ -52,18 +53,18 @@ function relativeTime(iso: string): string {
   const diff = Date.now() - t;
   const min = Math.floor(diff / 60000);
   if (min < 1) {
-    return '刚刚';
+    return locale === 'en' ? 'Just now' : '刚刚';
   }
   if (min < 60) {
-    return `${min} 分钟前`;
+    return locale === 'en' ? `${min} min ago` : `${min} 分钟前`;
   }
   const h = Math.floor(min / 60);
   if (h < 24) {
-    return `${h} 小时前`;
+    return locale === 'en' ? `${h} hr ago` : `${h} 小时前`;
   }
   const day = Math.floor(h / 24);
   if (day < 7) {
-    return `${day} 天前`;
+    return locale === 'en' ? `${day} d ago` : `${day} 天前`;
   }
   return iso.slice(0, 10);
 }
@@ -112,6 +113,7 @@ function ToolTraceList({traces}: {traces: ToolTrace[]}) {
 function buildSuggestions(
   snapshot: ReturnType<typeof selectLearning>['snapshot'],
   fallback: string[],
+  locale: 'zh' | 'en',
 ): string[] {
   if (!snapshot) {
     return fallback;
@@ -119,13 +121,29 @@ function buildSuggestions(
   const out: string[] = [];
   const pending = snapshot.homework.filter(h => !h.submitted);
   if (pending[0]) {
-    out.push(`「${pending[0].title}」这个作业有什么要求？`);
+    out.push(
+      locale === 'en'
+        ? `What are the requirements for "${pending[0].title}"?`
+        : `「${pending[0].title}」这个作业有什么要求？`,
+    );
   }
   if (pending.length > 0) {
-    out.push('我还有哪些作业没交？按截止时间排一下');
+    out.push(
+      locale === 'en'
+        ? 'Which assignments are still pending? Sort by deadline.'
+        : '我还有哪些作业没交？按截止时间排一下',
+    );
   }
-  out.push('余额、电费、校园网有没有异常？');
-  out.push('李文正馆现在还有空位吗？有的话先给我一份确认单');
+  out.push(
+    locale === 'en'
+      ? 'Any issues with balance, electricity, or campus network?'
+      : '余额、电费、校园网有没有异常？',
+  );
+  out.push(
+    locale === 'en'
+      ? 'Are there seats available in Li Wenzheng Library? Prepare a confirmation if possible.'
+      : '李文正馆现在还有空位吗？有的话先给我一份确认单',
+  );
   return out.slice(0, 4);
 }
 
@@ -186,9 +204,10 @@ export function AIScreen({route, navigation}: AIScreenProps) {
   const activeConversationId = useSelector(selectActiveConversationId);
   const {agentStatus} = useSelector(selectAI);
   const {snapshot} = useSelector(selectLearning);
+  const {locale} = useSelector(selectSettings);
   const activeConversation =
     conversations.find(c => c.id === activeConversationId) ?? null;
-  const suggestions = buildSuggestions(snapshot, t.ai.suggestions);
+  const suggestions = buildSuggestions(snapshot, t.ai.suggestions, locale);
 
   const [input, setInput] = useState('');
   const [view, setView] = useState<'list' | 'chat'>(
@@ -312,7 +331,7 @@ export function AIScreen({route, navigation}: AIScreenProps) {
                 </View>
                 <View style={styles.convMeta}>
                   <Text style={styles.convTime}>
-                    {relativeTime(item.updatedAt)}
+                    {relativeTime(item.updatedAt, locale)}
                   </Text>
                   <Pressable
                     onPress={() => confirmDelete(item)}

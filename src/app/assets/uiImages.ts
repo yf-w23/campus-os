@@ -12,6 +12,7 @@ export const uiImages: Record<string, ImageSourcePropType> = {
   campusGrades: require('../../../campusOS_ui/grades.png'),
   campusPEtest: require('../../../campusOS_ui/PEtest.png'),
   campusDormitory: require('../../../campusOS_ui/domitory.png'),
+  campusLaundry: require('../../../campusOS_ui/laundry.png'),
   campusFinance: require('../../../campusOS_ui/finance.png'),
   campusNetwork: require('../../../campusOS_ui/network.png'),
   campusReservation: require('../../../campusOS_ui/reservation.png'),

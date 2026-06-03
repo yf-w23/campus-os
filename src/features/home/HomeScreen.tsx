@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,9 +20,10 @@ import {
   selectAuth,
   selectIsDemoData,
   selectLearning,
+  selectSettings,
   selectTodaySchedule,
   selectUnreadNotifications,
-  selectUpcomingHomework,
+  selectUpcomingDeadlines,
 } from '../../state/selectors';
 import {AppDispatch} from '../../state/store';
 import {syncCampusData} from '../../state/thunks/syncCampusData';
@@ -35,12 +37,36 @@ type HomeScreenProps = CompositeScreenProps<
   NativeStackScreenProps<RootStackParamList>
 >;
 
-function greetingByHour(): string {
+function template(value: string, vars: Record<string, string | number>): string {
+  return value.replace(/\{(\w+)\}/g, (_, key) => String(vars[key] ?? ''));
+}
+
+function greetingByHour(locale: 'zh' | 'en'): string {
   const h = new Date().getHours();
-  if (h < 5) return '夜深了';
-  if (h < 11) return '早上好';
-  if (h < 14) return '中午好';
-  if (h < 18) return '下午好';
+  if (locale === 'en') {
+    if (h < 5) {
+      return 'Good night';
+    }
+    if (h < 12) {
+      return 'Good morning';
+    }
+    if (h < 18) {
+      return 'Good afternoon';
+    }
+    return 'Good evening';
+  }
+  if (h < 5) {
+    return '夜深了';
+  }
+  if (h < 11) {
+    return '早上好';
+  }
+  if (h < 14) {
+    return '中午好';
+  }
+  if (h < 18) {
+    return '下午好';
+  }
   return '晚上好';
 }
 
@@ -69,8 +95,9 @@ export function HomeScreen({navigation}: HomeScreenProps) {
 
   const isDemoData = useSelector(selectIsDemoData);
   const schedule = useSelector(selectTodaySchedule);
-  const homework = useSelector(selectUpcomingHomework);
+  const deadlines = useSelector(selectUpcomingDeadlines);
   const unread = useSelector(selectUnreadNotifications);
+  const {locale} = useSelector(selectSettings);
 
   const handleSync = () => {
     dispatch(syncCampusData());
@@ -78,6 +105,10 @@ export function HomeScreen({navigation}: HomeScreenProps) {
 
   const openAI = (question?: string) => {
     navigation.navigate('AI', question ? {initialQuestion: question} : undefined);
+  };
+
+  const openAddDdl = () => {
+    navigation.navigate('Learning', {initialTab: 'homework', openAddDeadline: true});
   };
 
   return (
@@ -88,7 +119,7 @@ export function HomeScreen({navigation}: HomeScreenProps) {
         showsVerticalScrollIndicator={false}>
         <FadeIn>
           <GradientCard style={styles.heroCard}>
-            <Text style={styles.greeting}>{greetingByHour()}</Text>
+            <Text style={styles.greeting}>{greetingByHour(locale)}</Text>
             <Text style={styles.name} numberOfLines={1}>
               {auth?.session?.displayName ?? t.appName}
             </Text>
@@ -100,7 +131,7 @@ export function HomeScreen({navigation}: HomeScreenProps) {
               )}
               {lastSyncedAt && !auth.demoMode && dataSource === 'campus' ? (
                 <Text style={styles.syncMeta}>
-                  · 已同步 {lastSyncedAt.slice(11, 16)}
+                  · {template(t.home.syncedAt, {time: lastSyncedAt.slice(11, 16)})}
                 </Text>
               ) : null}
             </View>
@@ -122,10 +153,10 @@ export function HomeScreen({navigation}: HomeScreenProps) {
         {error && !auth.demoMode ? (
           <FadeIn delay={80}>
             <View style={styles.errorCard}>
-              <Text style={styles.errorTitle}>校园数据同步失败</Text>
+              <Text style={styles.errorTitle}>{t.home.syncFailed}</Text>
               <Text style={styles.errorText}>{error}</Text>
               <PrimaryButton
-                label={loading ? '同步中…' : '重新同步'}
+                label={loading ? '同步中…' : t.home.retrySync}
                 onPress={handleSync}
                 loading={loading}
                 variant="ghost"
@@ -141,13 +172,13 @@ export function HomeScreen({navigation}: HomeScreenProps) {
             <FadeIn delay={120}>
               <View style={styles.bentoRow}>
                 <View style={[styles.bentoTile, styles.bentoTileWide]}>
-                  <Text style={styles.bentoTileTitle}>今日概览</Text>
+                  <Text style={styles.bentoTileTitle}>{t.home.todayOverview}</Text>
                   <View style={styles.bentoStatsRow}>
-                    <BentoStat value={schedule.length} label="课程" accent={colors.primary} />
+                    <BentoStat value={schedule.length} label={t.home.coursesCount} accent={colors.primary} />
                     <View style={styles.bentoDivider} />
-                    <BentoStat value={homework.length} label="待办" />
+                    <BentoStat value={deadlines.length} label={t.home.tasksCount} />
                     <View style={styles.bentoDivider} />
-                    <BentoStat value={unread.length} label="未读" />
+                    <BentoStat value={unread.length} label={t.home.unreadCount} />
                   </View>
                 </View>
               </View>
@@ -158,7 +189,7 @@ export function HomeScreen({navigation}: HomeScreenProps) {
               <View style={styles.todayCard}>
                 {schedule.length === 0 ? (
                   <Text style={styles.emptyLine}>
-                    {auth.demoMode ? '演示数据：今天暂无课程' : '今天暂无课程安排'}
+                    {auth.demoMode ? t.home.demoNoClasses : t.home.noClassesToday}
                   </Text>
                 ) : (
                   schedule.map((item, idx) => (
@@ -187,12 +218,16 @@ export function HomeScreen({navigation}: HomeScreenProps) {
               </View>
             </StaggerItem>
 
-            <SectionHeader title={t.home.upcomingDdl} />
-            {homework.length === 0 ? (
-              <Text style={styles.emptyLine}>暂无待办作业</Text>
+            <SectionHeader
+              title={t.home.upcomingDdl}
+              actionLabel={t.home.addDdl}
+              onAction={openAddDdl}
+            />
+            {deadlines.length === 0 ? (
+              <Text style={styles.emptyLine}>{t.home.noDdl}</Text>
             ) : (
               <View style={styles.listGroup}>
-                {homework.slice(0, 4).map((item, idx) => (
+                {deadlines.slice(0, 4).map((item, idx) => (
                   <StaggerItem key={item.id} index={idx + 1}>
                     <Pressable
                       style={({pressed}) => [
@@ -200,14 +235,32 @@ export function HomeScreen({navigation}: HomeScreenProps) {
                         idx > 0 && styles.listItemDivider,
                         pressed && styles.listItemPressed,
                       ]}
-                      onPress={() =>
-                        navigation.navigate('HomeworkDetail', {id: item.id})
-                      }>
+                      onPress={() => {
+                        if (item.kind === 'homework') {
+                          navigation.navigate('HomeworkDetail', {id: item.id});
+                          return;
+                        }
+                        Alert.alert(
+                          item.title,
+                          [
+                            `${t.learning.deadlinePrefix.replace('{deadline}', item.deadline)}`,
+                            item.courseName,
+                            item.note,
+                          ]
+                            .filter(Boolean)
+                            .join('\n'),
+                        );
+                      }}>
                       <Text style={styles.itemTitle} numberOfLines={1}>
                         {item.title}
                       </Text>
                       <Text style={styles.itemMeta} numberOfLines={1}>
-                        {item.courseName} · {item.deadline || '无截止时间'}
+                        {[
+                          item.kind === 'manual'
+                            ? t.learning.manualDdl
+                            : item.courseName,
+                          item.deadline || t.home.noDeadline,
+                        ].join(' · ')}
                       </Text>
                     </Pressable>
                   </StaggerItem>

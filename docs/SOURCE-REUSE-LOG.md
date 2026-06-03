@@ -13,6 +13,7 @@
 | `src/services/campus/network.ts` | thu-info-app `network.ts` 校园网接口协议 | BSL 1.1 | 参考 endpoint 与 HTML 字段位置，按本项目 WebVPN transport 重写 |
 | `src/services/campus/campusCard.ts` | thu-info-app `card.ts` 校园卡只读接口协议 | BSL 1.1 | 仅接入余额/流水只读能力，按本项目认证与传输层重写 |
 | `src/services/campus/library.ts` | thu-info-app `library.ts` 图书馆座位与研读间接口协议 | BSL 1.1 | 参考 endpoint、字段名和确认流程，按本项目 WebVPN/CAB 适配层重写 |
+| `src/services/campus/laundry.ts` | thu-info-app `apps/thu-info-app/src/ui/home/washer.tsx` 洗衣机查询接口协议 | BSL 1.1 | 参考第三方洗衣平台 endpoint 与字段含义，按本项目服务层独立实现 |
 
 ## 说明
 

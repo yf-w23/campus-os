@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
+import {useTranslation} from '../../app/i18n';
 import {colors, radii, spacing, typography} from '../../app/theme';
 import {ScreenHeader} from '../common/components/Ui';
 import {RootStackParamList} from '../../app/navigation/types';
@@ -20,91 +21,112 @@ interface Props {
 
 interface Entry {
   key: keyof RootStackParamList;
-  title: string;
-  subtitle: string;
+  i18nKey:
+    | 'classroom'
+    | 'grades'
+    | 'petest'
+    | 'dormitory'
+    | 'finance'
+    | 'network'
+    | 'reservation';
   icon: ImageSourcePropType;
 }
 
 const entries: Entry[] = [
   {
     key: 'CampusClassroom',
-    title: '教室查询',
-    subtitle: '查看教室占用情况',
+    i18nKey: 'classroom',
     icon: uiImages.campusClassroom,
   },
   {
     key: 'CampusGrades',
-    title: '成绩查询',
-    subtitle: '本学期与历史成绩',
+    i18nKey: 'grades',
     icon: uiImages.campusGrades,
   },
   {
     key: 'CampusPEtest',
-    title: '体测成绩',
-    subtitle: '体测详情与历史',
+    i18nKey: 'petest',
     icon: uiImages.campusPEtest,
   },
   {
     key: 'CampusDormitory',
-    title: '宿舍服务',
-    subtitle: '电费、健康打卡',
+    i18nKey: 'dormitory',
     icon: uiImages.campusDormitory,
   },
   {
     key: 'CampusFinance',
-    title: '校园财务',
-    subtitle: '校园卡余额与近期流水',
+    i18nKey: 'finance',
     icon: uiImages.campusFinance,
   },
   {
     key: 'CampusNetwork',
-    title: '校园网',
-    subtitle: '余额、账号与在线设备',
+    i18nKey: 'network',
     icon: uiImages.campusNetwork,
   },
   {
     key: 'CampusReservation',
-    title: '图书馆预约',
-    subtitle: '座位查询与预约、研读间',
+    i18nKey: 'reservation',
     icon: uiImages.campusReservation,
   },
 ];
 
 export function CampusScreen({navigation}: Props) {
+  const t = useTranslation();
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}>
         <ScreenHeader
-          eyebrow="校园"
-          title="清华校园服务"
-          subtitle="教室 · 成绩 · 体测 · 宿舍 · 图书馆"
+          eyebrow={t.tabs.campus}
+          title={t.campus.title}
+          subtitle={t.campus.subtitle}
         />
 
         <View style={styles.list}>
           {entries.map((entry, idx) => (
-            <Pressable
+            <EntryRow
               key={entry.key}
-              style={({pressed}) => [
-                styles.row,
-                idx > 0 && styles.rowDivider,
-                pressed && styles.rowPressed,
-              ]}
-              onPress={() => navigation.navigate(entry.key)}>
-              <View style={styles.iconWrap}>
-                <Image source={entry.icon} style={styles.icon} />
-              </View>
-              <View style={styles.rowBody}>
-                <Text style={styles.rowTitle}>{entry.title}</Text>
-                <Text style={styles.rowSub}>{entry.subtitle}</Text>
-              </View>
-              <Text style={styles.chev}>›</Text>
-            </Pressable>
+              entry={entry}
+              label={t.campus.entries[entry.i18nKey]}
+              index={idx}
+              onPress={() => navigation.navigate(entry.key)}
+            />
           ))}
         </View>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function EntryRow({
+  entry,
+  label,
+  index,
+  onPress,
+}: {
+  entry: Entry;
+  label: {title: string; subtitle: string};
+  index: number;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      style={({pressed}) => [
+        styles.row,
+        index > 0 && styles.rowDivider,
+        pressed && styles.rowPressed,
+      ]}
+      onPress={onPress}>
+      <View style={styles.iconWrap}>
+        <Image source={entry.icon} style={styles.icon} />
+      </View>
+      <View style={styles.rowBody}>
+        <Text style={styles.rowTitle}>{label.title}</Text>
+        <Text style={styles.rowSub}>{label.subtitle}</Text>
+      </View>
+      <Text style={styles.chev}>›</Text>
+    </Pressable>
   );
 }
 

@@ -47,6 +47,11 @@ import {
   logoutNetworkDevice,
 } from '../campus/network';
 import {
+  LaundryPlatform,
+  getLaundryBuildings,
+  getLaundryFloors,
+} from '../campus/laundry';
+import {
   getSportsReservationRecords,
   getSportsResources,
   sportsDateString,
@@ -69,6 +74,12 @@ import {
   findPersonalEvent,
   listPersonalEventsInRange,
 } from '../schedule/personalEvents';
+import {
+  appendManualDeadline,
+  deleteManualDeadlineById,
+  findManualDeadline,
+  listManualDeadlines,
+} from '../learning/manualDeadlines';
 import {normalizeDateString, todayLocalISO, weekDatesContaining} from '../../utils/weekDates';
 import {
   ActionPreview,
@@ -164,6 +175,11 @@ function normalizeDateArg(value: unknown, fallbackOffset = 0): string {
   return normalized || isoDateForOffset(fallbackOffset);
 }
 
+function deadlineTime(value: string): number {
+  const time = new Date(String(value ?? '').replace(' ', 'T')).getTime();
+  return Number.isNaN(time) ? Number.MAX_SAFE_INTEGER : time;
+}
+
 function ymdFromIso(date: string): string {
   return date.replace(/-/g, '');
 }
@@ -224,7 +240,15 @@ const getTodayTool: AgentTool = {
       .filter(h => !h.submitted)
       .slice(0, 10)
       .map(h => `[${h.courseName}] ${h.title} · 截止 ${h.deadline}`);
-    return {date: today, weekday, todayClasses, upcomingHomework: ddls};
+    const manualDdls = listManualDeadlines()
+      .slice(0, 10)
+      .map(h => `[自建${h.courseName ? `/${h.courseName}` : ''}] ${h.title} · 截止 ${h.deadline}`);
+    return {
+      date: today,
+      weekday,
+      todayClasses,
+      upcomingHomework: [...ddls, ...manualDdls],
+    };
   },
 };
 
@@ -257,17 +281,168 @@ const listHomeworkTool: AgentTool = {
     } else if (status === 'graded') {
       list = list.filter(h => h.graded);
     }
+    const homework = list.map(h => ({
+      source: 'course',
+      deletable: false,
+      id: h.id,
+      course: h.courseName,
+      title: h.title,
+      deadline: h.deadline,
+      status: h.status,
+      grade: h.grade,
+    }));
+    const manual = status === 'submitted' || status === 'graded'
+      ? []
+      : listManualDeadlines().map(h => ({
+          source: 'manual',
+          deletable: true,
+          id: h.id,
+          course: h.courseName,
+          title: h.title,
+          deadline: h.deadline,
+          status: 'pending',
+          note: h.note,
+        }));
+    const combined = [...homework, ...manual].sort(
+      (a, b) => deadlineTime(a.deadline) - deadlineTime(b.deadline),
+    );
     return {
-      count: list.length,
-      homework: list.slice(0, 30).map(h => ({
-        id: h.id,
-        course: h.courseName,
-        title: h.title,
-        deadline: h.deadline,
-        status: h.status,
-        grade: h.grade,
+      count: combined.length,
+      homework: combined.slice(0, 30).map(h => ({
+        ...h,
       })),
     };
+  },
+};
+
+const addManualDeadlineTool: AgentTool = {
+  name: 'add_manual_deadline',
+  title: '添加自建 DDL',
+  description:
+    '添加一条用户自建 DDL/待办。只写入本地，不影响老师布置的网络学堂作业。需要明确标题和截止时间，执行前会请用户确认。',
+  parameters: {
+    type: 'object',
+    properties: {
+      title: {type: 'string', description: 'DDL 标题'},
+      deadline: {
+        type: 'string',
+        description: '截止时间，如 2026-06-05 23:59 或 2026-06-05T23:59:00',
+      },
+      courseName: {type: 'string', description: '课程或分类，可选'},
+      note: {type: 'string', description: '备注，可选'},
+    },
+    required: ['title', 'deadline'],
+  },
+  risk: 'write_reversible',
+  permission: 'learning.deadline.write',
+  requiresConfirmation: true,
+  summarize: (a: any) => `添加 DDL：${a?.title ?? ''}`,
+  dryRun: async (a: any) => ({
+    title: '添加自建 DDL',
+    summary: `${a?.deadline ?? ''} · ${a?.title ?? ''}`,
+    affectedResource: a?.title,
+    reversible: true,
+  }),
+  confirmPrompt: (a: any) => ({
+    title: '确认添加自建 DDL',
+    message: `${a?.deadline ?? ''}\n${a?.title ?? ''}${
+      a?.courseName ? '\n' + a.courseName : ''
+    }`,
+  }),
+  verify: async (_a: any, result: any) => {
+    const id = result?.id;
+    return id && findManualDeadline(String(id))
+      ? {ok: true, message: '已在自建 DDL 中确认'}
+      : {ok: false, message: '添加后未找到自建 DDL'};
+  },
+  undo: async (_a: any, result: any) => {
+    const id = result?.id;
+    if (!id) {
+      return {ok: false, message: '缺少 DDL id，无法撤销'};
+    }
+    const ok = await deleteManualDeadlineById(String(id));
+    return {ok, message: ok ? '已撤销新增 DDL' : '撤销失败'};
+  },
+  run: async (args: {
+    title: string;
+    deadline: string;
+    courseName?: string;
+    note?: string;
+  }) => {
+    if (!args.title?.trim() || !args.deadline?.trim()) {
+      return {ok: false, message: '请提供标题和截止时间'};
+    }
+    const item = await appendManualDeadline({
+      title: args.title,
+      deadline: args.deadline,
+      courseName: args.courseName,
+      note: args.note,
+    });
+    return {ok: true, id: item.id, message: '已添加自建 DDL'};
+  },
+};
+
+const removeManualDeadlineTool: AgentTool = {
+  name: 'remove_manual_deadline',
+  title: '删除自建 DDL',
+  description:
+    '删除用户自己添加的 DDL。只能删除 source=manual/deletable=true 的自建 DDL，不能删除老师布置的作业。执行前会请用户确认。',
+  parameters: {
+    type: 'object',
+    properties: {
+      idOrTitle: {type: 'string', description: '自建 DDL id 或标题关键词'},
+    },
+    required: ['idOrTitle'],
+  },
+  risk: 'write_reversible',
+  permission: 'learning.deadline.write',
+  requiresConfirmation: true,
+  summarize: (a: any) => `删除自建 DDL：${a?.idOrTitle ?? ''}`,
+  dryRun: async (a: any) => {
+    const found = findManualDeadline(String(a?.idOrTitle ?? ''));
+    if (!found) {
+      throw new Error(`未找到匹配的自建 DDL：${a?.idOrTitle ?? ''}`);
+    }
+    return {
+      title: '删除自建 DDL',
+      summary: `${found.deadline} · ${found.title}`,
+      affectedResource: found.title,
+      reversible: true,
+    };
+  },
+  confirmPrompt: (a: any) => ({
+    title: '确认删除自建 DDL',
+    message: `将删除：${a?.idOrTitle}\n（只能删除用户自建 DDL，不会删除老师布置的作业）`,
+    destructive: true,
+  }),
+  verify: async (a: any) => {
+    const found = findManualDeadline(String(a?.idOrTitle ?? ''));
+    return found
+      ? {ok: false, message: '删除后该自建 DDL 仍存在'}
+      : {ok: true, message: '已确认自建 DDL 删除'};
+  },
+  undo: async (_a: any, result: any) => {
+    const removed = result?.removed;
+    if (!removed) {
+      return {ok: false, message: '缺少原 DDL 内容，无法撤销'};
+    }
+    await appendManualDeadline({
+      title: removed.title,
+      deadline: removed.deadline,
+      courseName: removed.courseName,
+      note: removed.note,
+    });
+    return {ok: true, message: '已重新添加被删除的 DDL'};
+  },
+  run: async (args: {idOrTitle: string}) => {
+    const found = findManualDeadline(args.idOrTitle);
+    if (!found) {
+      return {ok: false, message: `未找到匹配的自建 DDL：${args.idOrTitle}`};
+    }
+    const ok = await deleteManualDeadlineById(found.id);
+    return ok
+      ? {ok: true, message: `已删除「${found.title}」`, removed: found}
+      : {ok: false, message: '删除失败'};
   },
 };
 
@@ -359,6 +534,98 @@ const getElectricityTool: AgentTool = {
       room: room
         ? {building: room.building, room: room.room, userName: room.userName}
         : undefined,
+    };
+  },
+};
+
+const listLaundryBuildingsTool: AgentTool = {
+  name: 'list_laundry_buildings',
+  title: '洗衣机楼宇列表',
+  description:
+    '列出可查询洗衣机状态的宿舍楼/位置。用户问哪里能查洗衣机、要选择楼栋、或未说明具体楼栋时使用。',
+  parameters: {type: 'object', properties: {}},
+  risk: 'read',
+  permission: 'campus.laundry.read',
+  summarize: () => '查询洗衣机楼宇列表',
+  run: async () => {
+    const groups = await getLaundryBuildings();
+    return {
+      groups: groups.map(group => ({
+        name: group.name,
+        buildings: group.buildings.map(building => ({
+          id: building.id,
+          name: building.name,
+          platform: building.platform,
+        })),
+      })),
+    };
+  },
+};
+
+const getLaundryStatusTool: AgentTool = {
+  name: 'get_laundry_status',
+  title: '洗衣机状态',
+  description:
+    '查询某个宿舍楼/位置的洗衣机、洗鞋机、烘干机实时状态。需要 buildingId、buildingName、platform，优先来自 list_laundry_buildings 返回值。',
+  parameters: {
+    type: 'object',
+    properties: {
+      buildingId: {
+        type: 'string',
+        description: 'list_laundry_buildings 返回的楼宇 id',
+      },
+      buildingName: {
+        type: 'string',
+        description: '楼宇/位置名称，用于展示和二次确认来源',
+      },
+      platform: {
+        type: 'string',
+        enum: ['jieli', 'haile'],
+        description: '洗衣平台，来自 list_laundry_buildings 返回值',
+      },
+    },
+    required: ['buildingId', 'buildingName', 'platform'],
+  },
+  risk: 'read',
+  permission: 'campus.laundry.read',
+  summarize: (a: {buildingName?: string}) =>
+    `查询洗衣机状态 ${a?.buildingName ?? ''}`,
+  run: async (args: {
+    buildingId: string;
+    buildingName: string;
+    platform: LaundryPlatform;
+  }) => {
+    const floors = await getLaundryFloors({
+      id: args.buildingId,
+      name: args.buildingName,
+      platform: args.platform,
+    });
+    const machines = floors.flatMap(floor => floor.machines);
+    return {
+      building: {
+        id: args.buildingId,
+        name: args.buildingName,
+        platform: args.platform,
+      },
+      summary: {
+        total: machines.length,
+        idle: machines.filter(item => item.status === 'idle').length,
+        working: machines.filter(item => item.status === 'working').length,
+        error: machines.filter(item => item.status === 'error').length,
+      },
+      floors: floors.map(floor => ({
+        name: floor.name,
+        machines: floor.machines.map(machine => ({
+          name: machine.name,
+          label: machine.location
+            ? `${machine.location} ${machine.type}`
+            : `${machine.name} ${machine.type}`,
+          type: machine.type,
+          status: machine.status,
+          etaMinutes: machine.etaMinutes,
+          updatedAt: machine.updatedAt,
+        })),
+      })),
     };
   },
 };
@@ -2084,9 +2351,13 @@ export const AGENT_TOOLS: AgentTool[] = [
   addPersonalEventTool,
   removePersonalEventTool,
   listHomeworkTool,
+  addManualDeadlineTool,
+  removeManualDeadlineTool,
   getHomeworkDetailTool,
   getGradesTool,
   getElectricityTool,
+  listLaundryBuildingsTool,
+  getLaundryStatusTool,
   getCampusCardBalanceTool,
   getCampusCardTransactionsTool,
   rechargeCampusCardTool,

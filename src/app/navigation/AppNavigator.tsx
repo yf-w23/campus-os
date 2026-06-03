@@ -24,6 +24,8 @@ import {EleBalanceScreen} from '../../features/campus/EleBalanceScreen';
 import {EleRechargeScreen} from '../../features/campus/EleRechargeScreen';
 import {CampusFinanceScreen} from '../../features/campus/CampusFinanceScreen';
 import {CampusNetworkScreen} from '../../features/campus/CampusNetworkScreen';
+import {CampusLaundryScreen} from '../../features/campus/CampusLaundryScreen';
+import {CampusLaundryDetailScreen} from '../../features/campus/CampusLaundryDetailScreen';
 import {LibraryNativeScreen} from '../../features/campus/LibraryNativeScreen';
 import {LibraryFloorScreen} from '../../features/campus/LibraryFloorScreen';
 import {LibrarySectionScreen} from '../../features/campus/LibrarySectionScreen';
@@ -205,6 +207,11 @@ export function AppNavigator() {
             <Stack.Screen name="CampusGrades" component={GradesScreen} />
             <Stack.Screen name="CampusPEtest" component={PEtestScreen} />
             <Stack.Screen name="CampusDormitory" component={DormitoryScreen} />
+            <Stack.Screen name="CampusLaundry" component={CampusLaundryScreen} />
+            <Stack.Screen
+              name="CampusLaundryDetail"
+              component={CampusLaundryDetailScreen}
+            />
             <Stack.Screen name="CampusFinance" component={CampusFinanceScreen} />
             <Stack.Screen name="CampusNetwork" component={CampusNetworkScreen} />
             <Stack.Screen name="CampusEleBalance" component={EleBalanceScreen} />

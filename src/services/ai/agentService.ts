@@ -6,6 +6,7 @@ import {
   VerificationResult,
 } from '../../domain/actions';
 import {LearningSnapshot} from '../../domain/learning';
+import {ManualDeadline} from '../../domain/deadline';
 import {
   getToolByName,
   toolSpecs,
@@ -77,7 +78,12 @@ function normalizeDate(s: string | undefined | null): string {
 
 export function buildAgentContext(
   snapshot: LearningSnapshot | null | undefined,
-  extra?: {memorySummary?: string; studentId?: string; demoMode?: boolean},
+  extra?: {
+    memorySummary?: string;
+    studentId?: string;
+    demoMode?: boolean;
+    manualDeadlines?: ManualDeadline[];
+  },
 ): AgentContext {
   const today = todayLocalISO();
   const todayDate = `${today} ${weekdayCN()}`;
@@ -98,11 +104,19 @@ export function buildAgentContext(
     };
   }
 
-  const upcoming = snapshot.homework
+  const manualUpcoming = (extra?.manualDeadlines ?? [])
+    .slice(0, 8)
+    .map(item =>
+      `- [自建${item.courseName ? `/${item.courseName}` : ''}] ${item.title} · 截止 ${item.deadline}`,
+    )
+    .join('\n');
+
+  const homeworkUpcoming = snapshot.homework
     .filter(item => !item.submitted)
     .slice(0, 8)
     .map(item => `- [${item.courseName}] ${item.title} · 截止 ${item.deadline}`)
     .join('\n');
+  const upcoming = [homeworkUpcoming, manualUpcoming].filter(Boolean).join('\n');
 
   const todayClasses = snapshot.schedule
     .filter(item => normalizeDate(item.date) === today)
@@ -136,15 +150,17 @@ export function buildSystemPrompt(context: AgentContext): string {
     '',
     '## 工具使用原则',
     '- 需要实时/精确数据（成绩、电费余额、校园卡/校园网余额、图书馆空位、体育预约、作业详情）时，调用相应工具获取，不要凭注入摘要臆测。',
-    '- 预约/取消图书馆座位、预约/取消研读间、注销校园网设备、添加/删除个人备忘日程属于写操作，会触发 dry-run、用户二次确认和执行后验证。',
+    '- 预约/取消图书馆座位、预约/取消研读间、注销校园网设备、添加/删除个人备忘日程、添加/删除自建 DDL 属于写操作，会触发 dry-run、用户二次确认和执行后验证。',
     '- 选课、支付、校园卡挂失/充值/改密码、教学评价提交、邮件发送等高风险事务当前不自动执行；只能给出方案或提醒用户到官方页面手动处理。',
     '- 问「这周/某天有什么安排」时优先用 get_week_schedule；仅查用户自建备忘用 list_personal_events。不能删除或修改教务课表，只能增删个人备忘。',
+    '- 问 DDL/作业/待办时优先用 list_homework，它会合并老师布置的作业与用户自建 DDL。用户要求新增 DDL 时用 add_manual_deadline；要求删除 DDL 时只能用 remove_manual_deadline 删除自建 DDL，老师布置的作业不能删除。',
     '- 问空教室、自习地点、某教学楼空闲情况时，先用 list_classroom_buildings 或 find_available_classrooms 获取真实教室状态。',
     '- 预约图书馆座位按"列馆→列楼层→列分区→找座位→预约"的顺序逐步推进，不要反复试探。',
     '- 用户问图书馆当前预约记录或取消座位预约时，先用 list_library_booking_records 获取真实记录，再用其中 delId 调 cancel_library_seat_booking。',
     '- 用户问研读间时，先用 list_library_room_types / find_library_rooms 查可用资源；预约前必须有明确日期、开始/结束时间和 devId/kindId。',
     '- 用户问校园网余额/在线设备时使用 get_network_balance / list_network_devices；注销设备前只使用 key，工具会自行查 mac。',
     '- 用户问校园卡时只查询余额和流水，不要承诺充值、挂失或修改密码。',
+    '- 用户问宿舍洗衣机状态、哪里有空闲洗衣机、某楼洗衣机剩余时间时，先用 list_laundry_buildings 找楼宇；有明确楼宇后用 get_laundry_status 获取真实状态。',
     '- 预约座位前若用户没指定地点，优先使用其常用图书馆（见下方记忆）；仍不确定时先询问。',
     '- 用户表达明确长期偏好（常去哪、默认充值多少、关注哪些课）时，用 remember_preference 记住。',
     '- 当用户在同一会话中连续 2 次以上对同一资源做同类操作（如连续查同一图书馆、同一分区、同一场馆），可主动建议：「我注意到你好像经常用 xxx，要不要我记住这个偏好？」如果用户同意，再调用 remember_preference 写入。',

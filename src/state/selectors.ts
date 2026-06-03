@@ -1,4 +1,5 @@
 import {ScheduleEvent} from '../domain/learning';
+import {DeadlineListItem} from '../domain/deadline';
 import {PersonalEvent} from '../domain/schedule';
 import {normalizeDateString, todayLocalISO} from '../utils/weekDates';
 import {RootState} from './store';
@@ -8,6 +9,8 @@ export const selectLearning = (state: RootState) => state.learning;
 export const selectSchedule = (state: RootState) => state.schedule;
 export const selectPersonalEvents = (state: RootState) =>
   state.schedule.personalEvents;
+export const selectManualDeadlines = (state: RootState) =>
+  state.manualDeadlines.items;
 
 export const selectCampusSchedule = (state: RootState) => ({
   calendar: state.schedule.calendar,
@@ -36,6 +39,39 @@ export const selectSettings = (state: RootState) => state.settings;
 
 export const selectUpcomingHomework = (state: RootState) =>
   state.learning.snapshot?.homework.filter(item => !item.submitted) ?? [];
+
+function deadlineTime(value: string): number {
+  const time = new Date(String(value ?? '').replace(' ', 'T')).getTime();
+  return Number.isNaN(time) ? Number.MAX_SAFE_INTEGER : time;
+}
+
+export const selectUpcomingDeadlines = (state: RootState): DeadlineListItem[] => {
+  const homework: DeadlineListItem[] =
+    state.learning.snapshot?.homework
+      .filter(item => !item.submitted)
+      .map(item => ({
+        kind: 'homework' as const,
+        id: item.id,
+        title: item.title,
+        courseName: item.courseName,
+        deadline: item.deadline,
+        status: item.status,
+        submitted: item.submitted,
+      })) ?? [];
+  const manual: DeadlineListItem[] = state.manualDeadlines.items.map(item => ({
+    kind: 'manual' as const,
+    id: item.id,
+    title: item.title,
+    courseName: item.courseName,
+    deadline: item.deadline,
+    note: item.note,
+    status: 'pending',
+    submitted: false,
+  }));
+  return [...homework, ...manual].sort(
+    (a, b) => deadlineTime(a.deadline) - deadlineTime(b.deadline),
+  );
+};
 
 export type MergedScheduleItem =
   | {kind: 'course'; event: ScheduleEvent}

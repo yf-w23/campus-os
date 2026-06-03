@@ -18,6 +18,7 @@ export {PEtestScreen} from './PEtestScreen';
 
 const icons = {
   dormitory: uiImages.campusDormitory,
+  laundry: uiImages.campusLaundry,
   reservation: uiImages.campusReservation,
 };
 
@@ -28,8 +29,15 @@ export function DormitoryScreen({navigation}: EntryScreenProps<'CampusDormitory'
       pageTitle="宿舍服务"
       heroIcon={icons.dormitory}
       heroTitle="宿舍生活服务"
-      heroSubtitle="电费查询与充值、健康打卡与服务"
+      heroSubtitle="电费查询与充值、洗衣机状态与服务"
       entries={[
+        {
+          title: '洗衣机查询',
+          subtitle: '查看宿舍楼洗衣机空闲与剩余时间',
+          url: 'native://campus/laundry',
+          accent: '#14B8A6',
+          navigateTo: 'CampusLaundry',
+        },
         {
           title: '电费余额',
           subtitle: '查询当前余额与更新时间',

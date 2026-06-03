@@ -21,6 +21,7 @@ import {
   selectActiveMessages,
   selectAuth,
   selectLearning,
+  selectManualDeadlines,
   selectSettings,
 } from '../../state/selectors';
 import {
@@ -48,6 +49,7 @@ export function useAIChat() {
   const messages = useSelector(selectActiveMessages);
   const activeConversationId = useSelector(selectActiveConversationId);
   const {snapshot} = useSelector(selectLearning);
+  const manualDeadlines = useSelector(selectManualDeadlines);
   const auth = useSelector(selectAuth);
   const {aiApiKeyConfigured} = useSelector(selectSettings);
   const [pendingConfirmation, setPendingConfirmation] =
@@ -105,6 +107,7 @@ export function useAIChat() {
         memorySummary: summarizeMemory(memory),
         studentId: auth.session.studentId,
         demoMode: auth.demoMode,
+        manualDeadlines,
       });
 
       try {
@@ -173,6 +176,7 @@ export function useAIChat() {
       auth.session.studentId,
       dispatch,
       messages,
+      manualDeadlines,
       provider,
       snapshot,
       streaming,
