@@ -8,7 +8,7 @@
 
 把课表、作业、成绩、教室、电费、校园卡、校园网、图书馆座位、AI 助手、AI 记忆、AI 工作流与主动监控揉到一个 App 里。完全 native UI，不依赖任何业务后端 —— 你的账号密码和 API Key 只存在你手机的安全存储里。
 
-**当前版本：v1.1.0** · [下载 APK](https://github.com/yf-w23/campus-os/releases/latest)
+**当前版本：v1.1.1** · [下载 APK](https://github.com/yf-w23/campus-os/releases/latest)
 
 ---
 
@@ -18,7 +18,7 @@
 
 [**Releases → 最新版本**](https://github.com/yf-w23/campus-os/releases/latest)
 
-下载 `campus-os-v1.1.0-android-arm64.apk`（约 33 MB），传到 Android 手机安装即可。
+下载 `campus-os-v1.1.1-android-arm64.apk`（约 33 MB），传到 Android 手机安装即可。
 
 - 系统要求：Android 7+（API 24+）
 - 架构：arm64-v8a（2018 年后绝大多数手机都是；32 位 / x86 模拟器暂不支持）
@@ -123,15 +123,24 @@ npm run android           # 另开终端编译 debug 包
 
 ---
 
+## v1.1.1 更新摘要（2026-06）
+
+| 项目 | 说明 |
+|---|---|
+| 自建 DDL | 学习页 DDL tab 支持手动新增/删除自建 DDL；首页 DDL 区块合并展示老师作业与自建 DDL；AI 可在确认后增删自建 DDL，但不能删除老师布置的作业 |
+| 宿舍洗衣机 | 宿舍服务新增洗衣机查询入口，可查看楼宇、空闲/运行/异常状态与剩余时间 |
+| 英文适配 | Campus 主入口、Home/Learning/AI 首层文案补齐英文适配，切换 English 后不再在主校园页显示中文入口 |
+| 工具生态 | AI 工具扩展至 46 个，覆盖课表/成绩/作业/自建 DDL/教室/电费/校园卡/校园网/洗衣机/图书馆/备忘/选课链路 |
+| 版本号 | 从 v1.1.0 升级至 v1.1.1 |
+| Release | [v1.1.1](https://github.com/yf-w23/campus-os/releases/tag/v1.1.1) 附 arm64 APK |
+
+---
+
 ## v1.1.0 更新摘要（2026-06）
 
 | 项目 | 说明 |
 |---|---|
 | AI-native OS 核心 | 新增 Workflow Engine（8 种主动监控条件 + 前台触发检查）、AI 记忆系统（跨会话偏好持久化 + 自动学习）、监控管理 UI |
-| 自建 DDL | 学习页 DDL tab 支持手动新增/删除自建 DDL；首页 DDL 区块合并展示老师作业与自建 DDL；AI 可在确认后增删自建 DDL，但不能删除老师布置的作业 |
-| 宿舍洗衣机 | 宿舍服务新增洗衣机查询入口，可查看楼宇、空闲/运行/异常状态与剩余时间 |
-| 英文适配 | Campus 主入口、Home/Learning/AI 首层文案补齐英文适配，切换 English 后不再在主校园页显示中文入口 |
-| 工具生态 | AI 工具扩展至 46 个，覆盖课表/成绩/作业/自建 DDL/教室/电费/校园卡/校园网/洗衣机/图书馆/备忘/选课链路 |
 | 高风险操作安全 | 所有写操作有 dry-run → 确认弹窗 → 执行 → verify 校验完整链路；不可逆操作有强确认 |
 | 架构升级 | 领域模型（domain/）+ 服务层（services/）+ UI 层（features/）三层分离 |
 | 版本号 | 从 v0.5.2 升级至 v1.1.0 |
