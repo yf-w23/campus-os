@@ -2,7 +2,7 @@ import {Workflow, WorkflowCheckResult} from '../../domain/workflow';
 import {loadWorkflows, updateWorkflow} from '../../storage/workflowStorage';
 import {showLocalNotification} from '../notification/notificationService';
 import {store} from '../../state/store';
-import {selectLearningSchedule} from '../../state/selectors';
+import {selectTodaySchedule} from '../../state/selectors';
 import {getEleRemainder} from '../campus/electricity';
 import {getNetworkBalance} from '../campus/network';
 
@@ -48,8 +48,20 @@ async function checkNetworkBalance(wf: Workflow): Promise<WorkflowCheckResult> {
 
 async function checkScheduleReminder(wf: Workflow): Promise<WorkflowCheckResult> {
   try {
-    const schedule = selectLearningSchedule(store.getState());
-    const todayCourses = schedule.filter(e => e.category === 'course' || e.title);
+    const seen = new Set<string>();
+    const todayCourses = selectTodaySchedule(store.getState()).filter(course => {
+      const key = [
+        course.title,
+        course.startTime,
+        course.endTime,
+        course.location,
+      ].join('|');
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
 
     if (todayCourses.length > 0) {
       const courseNames = todayCourses.map(c => c.title).slice(0, 3).join('、');
@@ -57,7 +69,7 @@ async function checkScheduleReminder(wf: Workflow): Promise<WorkflowCheckResult>
         workflowId: wf.id,
         triggered: true,
         message: wf.message,
-        detail: `今日课程：${courseNames}${todayCourses.length > 3 ? ` 等 ${todayCourses.length} 门课` : ''}`,
+        detail: `今日课程：${courseNames}${todayCourses.length > 3 ? ` 等 ${todayCourses.length} 节课` : ''}`,
       };
     }
   } catch {
