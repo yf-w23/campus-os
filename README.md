@@ -8,7 +8,7 @@
 
 把课表、作业、成绩、教室、电费、校园卡、校园网、图书馆座位、AI 助手、AI 记忆、AI 工作流与主动监控揉到一个 App 里。完全 native UI，不依赖任何业务后端 —— 你的账号密码和 API Key 只存在你手机的安全存储里。
 
-**当前版本：v1.1.1** · [下载 APK](https://github.com/yf-w23/campus-os/releases/latest)
+**当前版本：v1.1.2** · [下载 APK](https://github.com/yf-w23/campus-os/releases/latest)
 
 ---
 
@@ -18,7 +18,7 @@
 
 [**Releases → 最新版本**](https://github.com/yf-w23/campus-os/releases/latest)
 
-下载 `campus-os-v1.1.1-android-arm64.apk`（约 33 MB），传到 Android 手机安装即可。
+下载 `campus-os-v1.1.2-android-arm64.apk`（约 33 MB），传到 Android 手机安装即可。
 
 - 系统要求：Android 7+（API 24+）
 - 架构：arm64-v8a（2018 年后绝大多数手机都是；32 位 / x86 模拟器暂不支持）
@@ -120,6 +120,16 @@ npm run android           # 另开终端编译 debug 包
 - **操作审计**：查看全部 AI 操作的脱敏日志
 - **AI 记忆**：查看/编辑/清除 AI 记忆
 - 退出登录（清掉 Keychain + Redux + 持久化会话标记）
+
+---
+
+## v1.1.2 更新摘要（2026-06）
+
+| 项目 | 说明 |
+|---|---|
+| 课程提醒 | 修复「今日课程提醒」误把整张课表/日程都统计为今日课程的问题，只按今天日期筛选，并对重复课程片段去重 |
+| 版本号 | 从 v1.1.1 升级至 v1.1.2，Android versionCode 升至 12 |
+| Release | [v1.1.2](https://github.com/yf-w23/campus-os/releases/tag/v1.1.2) 附 arm64 APK |
 
 ---
 
