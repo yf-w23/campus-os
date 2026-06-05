@@ -88,6 +88,7 @@ export function CampusMailComposeScreen({route, navigation}: Props) {
         ref={webRef}
         source={{uri: MAIL_PORTAL_URL}}
         pointerEvents="none"
+        containerStyle={styles.bridgeWebViewContainer}
         sharedCookiesEnabled
         thirdPartyCookiesEnabled
         javaScriptEnabled
@@ -298,16 +299,23 @@ function Field({
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  bridgeWebView: {
+  bridgeWebViewContainer: {
     position: 'absolute',
     flex: 0,
     top: -1200,
     left: -1200,
     width: 1,
     height: 1,
-    opacity: 0.01,
+    opacity: 0,
     zIndex: -1,
     elevation: -1,
+    overflow: 'hidden',
+  },
+  bridgeWebView: {
+    flex: 0,
+    width: 1,
+    height: 1,
+    opacity: 0,
   },
   content: {padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md},
   field: {
