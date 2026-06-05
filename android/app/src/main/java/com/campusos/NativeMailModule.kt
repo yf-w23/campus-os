@@ -228,6 +228,7 @@ class NativeMailModule(private val reactContext: ReactApplicationContext) :
         username,
         config.string("password", ""),
       )
+      appendSentCopy(config, message)
       Arguments.createMap().apply { putBoolean("ok", true) }
     }
   }
@@ -290,6 +291,60 @@ class NativeMailModule(private val reactContext: ReactApplicationContext) :
       if ((child.type and Folder.HOLDS_FOLDERS) != 0) {
         collectFolders(child, arr)
       }
+    }
+  }
+
+  private fun appendSentCopy(config: ReadableMap, message: MimeMessage) {
+    try {
+      connectStore(config).use { store ->
+        val sent = findSentFolder(store) ?: return
+        sent.open(Folder.READ_WRITE)
+        try {
+          val copy = MimeMessage(message)
+          copy.setFlag(Flags.Flag.SEEN, true)
+          sent.appendMessages(arrayOf(copy))
+        } finally {
+          sent.close(false)
+        }
+      }
+    } catch (_: Exception) {
+      // SMTP delivery has already succeeded. A missing Sent folder should not turn
+      // the user-visible send result into a failure.
+    }
+  }
+
+  private fun findSentFolder(store: Store): Folder? {
+    val candidates = listOf(
+      "Sent",
+      "Sent Messages",
+      "Sent Items",
+      "已发送",
+      "已发送邮件",
+      "发件箱",
+    )
+    for (name in candidates) {
+      try {
+        val folder = store.getFolder(name)
+        if (folder.exists()) return folder
+      } catch (_: Exception) {
+      }
+    }
+
+    val all = mutableListOf<Folder>()
+    fun walk(folder: Folder) {
+      folder.list().forEach { child ->
+        if ((child.type and Folder.HOLDS_MESSAGES) != 0) {
+          all.add(child)
+        }
+        if ((child.type and Folder.HOLDS_FOLDERS) != 0) {
+          walk(child)
+        }
+      }
+    }
+    walk(store.defaultFolder)
+    return all.firstOrNull { folder ->
+      val name = folder.fullName.lowercase()
+      name.contains("sent") || name.contains("已发送") || name.contains("发件")
     }
   }
 
