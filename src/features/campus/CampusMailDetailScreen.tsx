@@ -24,7 +24,6 @@ import {
   deleteMailMessages,
   markMailRead,
   moveMailMessages,
-  readMailMessage,
 } from '../../services/campus/mail';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CampusMailDetail'>;
@@ -41,7 +40,14 @@ function quoteText(message: MailMessageDetail): string {
 }
 
 export function CampusMailDetailScreen({route, navigation}: Props) {
-  const {id, title, fid = 1} = route.params;
+  const {
+    id,
+    title,
+    fid = 1,
+    fromName = '',
+    date = '',
+    brief = '',
+  } = route.params;
   const webRef = useRef<WebView>(null);
   const [message, setMessage] = useState<MailMessageDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -50,8 +56,15 @@ export function CampusMailDetailScreen({route, navigation}: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    webRef.current?.injectJavaScript(mailDetailBridgeScript(id, fid, title || ''));
-  }, [fid, id, title]);
+    webRef.current?.injectJavaScript(
+      mailDetailBridgeScript(id, fid, {
+        title: title || '',
+        fromName,
+        date,
+        brief,
+      }),
+    );
+  }, [brief, date, fid, fromName, id, title]);
 
   useEffect(() => {
     load().catch(() => undefined);
@@ -232,11 +245,19 @@ export function CampusMailDetailScreen({route, navigation}: Props) {
   );
 }
 
-function mailDetailBridgeScript(id: string, fid: number, fallbackTitle: string): string {
+function mailDetailBridgeScript(
+  id: string,
+  fid: number,
+  fallback: {title: string; fromName: string; date: string; brief: string},
+): string {
   return `
     (function () {
       var targetMid = ${JSON.stringify(id)};
       var targetFid = ${JSON.stringify(fid)};
+      var fallbackTitle = ${JSON.stringify(fallback.title)};
+      var fallbackFromName = ${JSON.stringify(fallback.fromName)};
+      var fallbackDate = ${JSON.stringify(fallback.date)};
+      var fallbackBrief = ${JSON.stringify(fallback.brief)};
       function post(data) {
         window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify(data));
       }
@@ -248,6 +269,9 @@ function mailDetailBridgeScript(id: string, fid: number, fallbackTitle: string):
         div.innerHTML = String(html || '');
         return normalize(div.innerText || div.textContent || '');
       }
+      function fallbackContact() {
+        return fallbackFromName ? [{name: fallbackFromName, address: ''}] : [];
+      }
       function contacts(value) {
         var list = Array.isArray(value) ? value : value ? [value] : [];
         return list.map(function (item) {
@@ -258,6 +282,98 @@ function mailDetailBridgeScript(id: string, fid: number, fallbackTitle: string):
           item = item || {};
           return {name: normalize(item.name || item.personal || item.trueName || ''), address: normalize(item.email || item.address || item.addr || '')};
         }).filter(function (item) { return item.name || item.address; });
+      }
+      function documents() {
+        var docs = [document];
+        var frames = Array.prototype.slice.call(document.querySelectorAll('iframe'));
+        frames.forEach(function (frame) {
+          try {
+            if (frame.contentDocument && frame.contentDocument.body) {
+              docs.push(frame.contentDocument);
+            }
+          } catch (e) {}
+        });
+        return docs;
+      }
+      function visibleText(el) {
+        if (!el) return '';
+        return normalize(el.innerText || el.textContent || '');
+      }
+      function isUsefulBody(text) {
+        if (!text) return false;
+        if (text === '锁屏' || text === fallbackTitle) return false;
+        if (/^(回复|转发|标未读|移动|删除|发件人|收件人|时间)$/.test(text)) return false;
+        return text.length >= 6;
+      }
+      function bestContentFromDom() {
+        var docs = documents();
+        var best = {html: '', text: ''};
+
+        for (var i = 1; i < docs.length; i += 1) {
+          var body = docs[i].body;
+          var frameText = visibleText(body);
+          if (isUsefulBody(frameText) && frameText.length > best.text.length) {
+            best = {html: body.innerHTML || '', text: frameText};
+          }
+        }
+
+        var selectors = [
+          '.j-mail-content',
+          '.j-mail-body',
+          '.mailContent',
+          '.mail-content',
+          '.mail-body',
+          '.mailBody',
+          '.readmail_content',
+          '.content-body',
+          '#mailContent',
+          '#messageBody',
+          '[class*="mail"][class*="content"]',
+          '[class*="mail"][class*="body"]'
+        ];
+        docs.forEach(function (doc) {
+          selectors.forEach(function (selector) {
+            Array.prototype.slice.call(doc.querySelectorAll(selector)).forEach(function (el) {
+              var text = visibleText(el);
+              if (isUsefulBody(text) && text.length > best.text.length) {
+                best = {html: el.innerHTML || '', text: text};
+              }
+            });
+          });
+        });
+        return best;
+      }
+      function textAfterLabel(label) {
+        var bodyText = document.body ? document.body.innerText || '' : '';
+        var lines = bodyText.split(/\\n+/).map(normalize).filter(Boolean);
+        for (var i = 0; i < lines.length; i += 1) {
+          if (lines[i] === label && lines[i + 1]) return lines[i + 1];
+          if (lines[i].indexOf(label) === 0) return normalize(lines[i].slice(label.length).replace(/^[:：]/, ''));
+        }
+        return '';
+      }
+      function scrapeDom() {
+        var content = bestContentFromDom();
+        var fromText = textAfterLabel('发件人');
+        var toText = textAfterLabel('收件人');
+        var ccText = textAfterLabel('抄送');
+        var dateText = textAfterLabel('时间') || (document.body && ((document.body.innerText || '').match(/\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}/) || [''])[0]) || fallbackDate;
+        return {
+          id: targetMid,
+          fid: targetFid,
+          from: contacts(fromText).concat(!fromText ? fallbackContact() : []),
+          to: contacts(toText),
+          cc: contacts(ccText),
+          subject: normalize(fallbackTitle) || '(无主题)',
+          date: normalize(dateText),
+          unread: false,
+          flagged: false,
+          hasAttachment: false,
+          brief: content.text ? content.text.slice(0, 160) : fallbackBrief,
+          contentHtml: content.html || '',
+          contentText: content.text || fallbackBrief,
+          attachments: []
+        };
       }
       function sid() {
         var match = location.href.match(/[?&]sid=([^&#]+)/);
@@ -291,44 +407,21 @@ function mailDetailBridgeScript(id: string, fid: number, fallbackTitle: string):
         var mail = payload.mail || payload.message || payload;
         var info = payload.mailInfo || payload.info || {};
         var html = mail.content || mail.html || mail.text || '';
+        var text = stripHtml(html);
         return {
           id: targetMid,
           fid: targetFid,
-          from: contacts(mail.from || info.from || mail.sender || info.sender),
+          from: contacts(mail.from || info.from || mail.sender || info.sender).concat(!(mail.from || info.from || mail.sender || info.sender) ? fallbackContact() : []),
           to: contacts(mail.to || info.to),
           cc: contacts(mail.cc || info.cc),
-          subject: normalize(mail.subject || info.subject || ${JSON.stringify(fallbackTitle)}) || '(无主题)',
-          date: normalize(mail.date || mail.sentDate || mail.receivedDate || info.date || ''),
+          subject: normalize(fallbackTitle || mail.subject || info.subject) || '(无主题)',
+          date: normalize(mail.date || mail.sentDate || mail.receivedDate || info.date || fallbackDate),
           unread: false,
           flagged: false,
           hasAttachment: !!(mail.attachments || info.attachments),
-          brief: stripHtml(html).slice(0, 160),
+          brief: text ? text.slice(0, 160) : fallbackBrief,
           contentHtml: String(html || ''),
-          contentText: stripHtml(html),
-          attachments: []
-        };
-      }
-      function scrapeVisible() {
-        var text = document.body ? document.body.innerText || '' : '';
-        var lines = text.split(/\\n+/).map(normalize).filter(Boolean);
-        var subject = lines.find(function (line) { return line && line !== '收件箱' && line !== '回复'; }) || ${JSON.stringify(fallbackTitle)};
-        var fromLine = lines.find(function (line) { return /发送给/.test(line); }) || '';
-        var email = (fromLine.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+/i) || [''])[0];
-        var date = (text.match(/\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}/) || [''])[0];
-        return {
-          id: targetMid,
-          fid: targetFid,
-          from: email ? [{name: email.split('@')[0], address: email}] : [],
-          to: [],
-          cc: [],
-          subject: normalize(subject) || '(无主题)',
-          date: date,
-          unread: false,
-          flagged: false,
-          hasAttachment: false,
-          brief: '',
-          contentHtml: '',
-          contentText: '',
+          contentText: text || fallbackBrief,
           attachments: []
         };
       }
@@ -352,7 +445,22 @@ function mailDetailBridgeScript(id: string, fid: number, fallbackTitle: string):
             }
           } catch (e) {}
         }
-        post({type: 'mailDetail', message: scrapeVisible()});
+        post({type: 'mailDetail', message: scrapeDom()});
+      }
+      function waitDomThenRead() {
+        var tries = 0;
+        var timer = setInterval(function () {
+          tries += 1;
+          var message = scrapeDom();
+          if ((message.contentText && message.contentText !== fallbackBrief) || tries >= 30) {
+            clearInterval(timer);
+            if (message.contentText && message.contentText !== fallbackBrief) {
+              post({type: 'mailDetail', message: message});
+            } else {
+              readRpc();
+            }
+          }
+        }, 500);
       }
       function openAndRead() {
         if (!/\\/coremail\\//.test(location.href)) return;
@@ -360,7 +468,7 @@ function mailDetailBridgeScript(id: string, fid: number, fallbackTitle: string):
         if (location.hash.slice(1) !== wanted) {
           location.href = location.href.split('#')[0] + '#' + wanted;
         }
-        setTimeout(readRpc, 900);
+        setTimeout(waitDomThenRead, 900);
       }
       try {
         setTimeout(openAndRead, 300);
@@ -386,10 +494,10 @@ const styles = StyleSheet.create({
   bridgeWebViewContainer: {
     position: 'absolute',
     flex: 0,
-    top: -1200,
+    top: -2200,
     left: -1200,
-    width: 1,
-    height: 1,
+    width: 390,
+    height: 900,
     opacity: 0,
     zIndex: -1,
     elevation: -1,
@@ -397,8 +505,8 @@ const styles = StyleSheet.create({
   },
   bridgeWebView: {
     flex: 0,
-    width: 1,
-    height: 1,
+    width: 390,
+    height: 900,
     opacity: 0,
   },
   loading: {flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm},

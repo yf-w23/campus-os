@@ -36,6 +36,9 @@ export type RootStackParamList = {
     id: string;
     title?: string;
     fid?: number;
+    fromName?: string;
+    date?: string;
+    brief?: string;
   };
   CampusMailCompose: {
     mode?: 'new' | 'reply' | 'forward';

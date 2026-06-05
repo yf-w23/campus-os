@@ -142,6 +142,9 @@ export function CampusMailScreen({navigation}: Props) {
       id: item.id,
       title: item.subject,
       fid: item.fid,
+      fromName: contactLine(item),
+      date: item.date,
+      brief: item.brief,
     });
   };
 
