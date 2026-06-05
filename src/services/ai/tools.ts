@@ -12,6 +12,7 @@
  */
 import {store} from '../../state/store';
 import {
+  CLASSROOM_PERIODS,
   ClassroomStatus,
   PERIODS_PER_DAY,
   fetchClassroomList,
@@ -64,7 +65,10 @@ import {
   deleteCourse,
   getSelectedCourses,
 } from '../campus/courseRegistration';
-import {getDegreeProgramCompletion, getFullDegreeProgram} from '../campus/program';
+import {
+  getDegreeProgramCompletion,
+  getFullDegreeProgram,
+} from '../campus/program';
 import {getNewsList, searchNewsList} from '../campus/news';
 import {fetchHomeworkDetail} from '../campus/homeworkDetail';
 import {patchAIMemory} from '../../storage/aiMemoryStorage';
@@ -80,7 +84,11 @@ import {
   findManualDeadline,
   listManualDeadlines,
 } from '../learning/manualDeadlines';
-import {normalizeDateString, todayLocalISO, weekDatesContaining} from '../../utils/weekDates';
+import {
+  normalizeDateString,
+  todayLocalISO,
+  weekDatesContaining,
+} from '../../utils/weekDates';
 import {
   ActionPreview,
   ConfirmationSpec,
@@ -117,7 +125,12 @@ export interface AgentTool {
 // ============================================================
 
 function dateChoiceFromArg(value: unknown): DateChoice {
-  if (value === 1 || value === '1' || value === 'tomorrow' || value === '明天') {
+  if (
+    value === 1 ||
+    value === '1' ||
+    value === 'tomorrow' ||
+    value === '明天'
+  ) {
     return 1;
   }
   return 0;
@@ -231,8 +244,13 @@ const getTodayTool: AgentTool = {
   run: async () => {
     const snapshot = getSnapshot();
     const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][now.getDay()];
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+      2,
+      '0',
+    )}-${String(now.getDate()).padStart(2, '0')}`;
+    const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][
+      now.getDay()
+    ];
     const todayClasses = (snapshot?.schedule ?? [])
       .filter(s => String(s.date).slice(0, 10) === today)
       .map(s => `${s.startTime}-${s.endTime} ${s.title} @ ${s.location}`);
@@ -242,7 +260,12 @@ const getTodayTool: AgentTool = {
       .map(h => `[${h.courseName}] ${h.title} · 截止 ${h.deadline}`);
     const manualDdls = listManualDeadlines()
       .slice(0, 10)
-      .map(h => `[自建${h.courseName ? `/${h.courseName}` : ''}] ${h.title} · 截止 ${h.deadline}`);
+      .map(
+        h =>
+          `[自建${h.courseName ? `/${h.courseName}` : ''}] ${h.title} · 截止 ${
+            h.deadline
+          }`,
+      );
     return {
       date: today,
       weekday,
@@ -291,18 +314,19 @@ const listHomeworkTool: AgentTool = {
       status: h.status,
       grade: h.grade,
     }));
-    const manual = status === 'submitted' || status === 'graded'
-      ? []
-      : listManualDeadlines().map(h => ({
-          source: 'manual',
-          deletable: true,
-          id: h.id,
-          course: h.courseName,
-          title: h.title,
-          deadline: h.deadline,
-          status: 'pending',
-          note: h.note,
-        }));
+    const manual =
+      status === 'submitted' || status === 'graded'
+        ? []
+        : listManualDeadlines().map(h => ({
+            source: 'manual',
+            deletable: true,
+            id: h.id,
+            course: h.courseName,
+            title: h.title,
+            deadline: h.deadline,
+            status: 'pending',
+            note: h.note,
+          }));
     const combined = [...homework, ...manual].sort(
       (a, b) => deadlineTime(a.deadline) - deadlineTime(b.deadline),
     );
@@ -683,7 +707,9 @@ const getCampusCardTransactionsTool: AgentTool = {
       subsidy: 3,
     };
     const end = normalizeDateArg(args.end, 0);
-    const start = args.start ? normalizeDateArg(args.start) : isoDateForOffset(-7);
+    const start = args.start
+      ? normalizeDateArg(args.start)
+      : isoDateForOffset(-7);
     const rows = await getCampusCardTransactions({
       start,
       end,
@@ -738,7 +764,9 @@ const rechargeCampusCardTool: AgentTool = {
   },
   confirmPrompt: (a: any) => ({
     title: '确认校园卡充值',
-    message: `将通过支付宝向校园卡充值 ${a?.amount ?? 0} 元。\n\n确认后将生成支付宝付款链接，请在支付宝 App 中完成支付。`,
+    message: `将通过支付宝向校园卡充值 ${
+      a?.amount ?? 0
+    } 元。\n\n确认后将生成支付宝付款链接，请在支付宝 App 中完成支付。`,
   }),
   run: async (args: {amount: number}) => {
     requireRealSession();
@@ -914,8 +942,7 @@ const searchSportsSlotsTool: AgentTool = {
 const listSportsReservationRecordsTool: AgentTool = {
   name: 'list_sports_reservation_records',
   title: '体育预约记录',
-  description:
-    '查询当前账号的体育场馆预约/订单记录。只读，不执行取消或支付。',
+  description: '查询当前账号的体育场馆预约/订单记录。只读，不执行取消或支付。',
   parameters: {type: 'object', properties: {}},
   risk: 'read',
   permission: 'campus.sports.reservation.read',
@@ -963,17 +990,20 @@ const findAvailableClassroomsTool: AgentTool = {
   name: 'find_available_classrooms',
   title: '查找空教室',
   description:
-    '查询某教学楼的空教室。dayIndex 为周一=1 到周日=7；periods 为要查的节次（1-6）。不传 dayIndex 默认今天，不传 periods 返回全天空闲节次数汇总。',
+    '查询某教学楼的空教室。dayIndex 为周一=1 到周日=7；periods 为清华 6 个大节（1=08:00-09:35，2=09:50-12:15，3=13:30-15:05，4=15:20-16:55，5=17:10-18:45，6=19:20-21:45）。不传 dayIndex 默认今天，不传 periods 返回全天空闲节次数汇总。',
   parameters: {
     type: 'object',
     properties: {
       buildingName: {type: 'string', description: '教学楼名称，如 六教'},
-      weekNumber: {type: 'number', description: '教学周，不传则使用教务系统当前周'},
+      weekNumber: {
+        type: 'number',
+        description: '教学周，不传则使用教务系统当前周',
+      },
       dayIndex: {type: 'number', description: '周一=1 到周日=7，默认今天'},
       periods: {
         type: 'array',
         items: {type: 'number'},
-        description: '节次数组，1-6；例如下午通常可传 [3,4]',
+        description: '大节数组，1-6；例如下午 13:30-16:55 可传 [3,4]',
       },
     },
     required: ['buildingName'],
@@ -1000,7 +1030,8 @@ const findAvailableClassroomsTool: AgentTool = {
         availableBuildings: buildings.map(b => b.name),
       };
     }
-    const weekNumber = args.weekNumber != null ? Number(args.weekNumber) : building.weekNumber;
+    const weekNumber =
+      args.weekNumber != null ? Number(args.weekNumber) : building.weekNumber;
     const state = await fetchClassroomState(building.searchName, weekNumber);
     const dayIndex = Math.min(
       7,
@@ -1016,6 +1047,12 @@ const findAvailableClassroomsTool: AgentTool = {
       requestedPeriods.length > 0
         ? requestedPeriods.map(p => start + p - 1)
         : Array.from({length: PERIODS_PER_DAY}, (_, i) => start + i);
+    const describePeriod = (period: number) =>
+      CLASSROOM_PERIODS.find(p => p.period === period) ?? {
+        period,
+        label: `第${period}节`,
+        timeRange: '',
+      };
     const available = state.classroomStates
       .map(room => {
         const freePeriods = slots
@@ -1025,9 +1062,11 @@ const findAvailableClassroomsTool: AgentTool = {
           }))
           .filter(item => item.free)
           .map(item => item.period);
+        const freePeriodDetails = freePeriods.map(describePeriod);
         return {
           name: room.name,
           freePeriods,
+          freePeriodDetails,
           availableForRequestedRange:
             requestedPeriods.length > 0 &&
             freePeriods.length === requestedPeriods.length,
@@ -1043,8 +1082,11 @@ const findAvailableClassroomsTool: AgentTool = {
       weekNumber: state.currentWeekNumber,
       dayIndex,
       date: state.datesOfCurrentWeek[dayIndex - 1],
+      periodDefinitions: CLASSROOM_PERIODS,
       requestedPeriods:
-        requestedPeriods.length > 0 ? requestedPeriods : '全天 1-6 节',
+        requestedPeriods.length > 0
+          ? requestedPeriods.map(describePeriod)
+          : '全天 1-6 大节',
       count: available.length,
       classrooms: available.slice(0, 40),
     };
@@ -1079,7 +1121,11 @@ const listFloorsTool: AgentTool = {
     type: 'object',
     properties: {
       libraryId: {type: 'number', description: '图书馆 id'},
-      date: {type: 'string', enum: ['today', 'tomorrow'], description: '默认 today'},
+      date: {
+        type: 'string',
+        enum: ['today', 'tomorrow'],
+        description: '默认 today',
+      },
     },
     required: ['libraryId'],
   },
@@ -1230,7 +1276,10 @@ const findLibraryRoomsTool: AgentTool = {
     properties: {
       kindId: {type: 'number', description: '研读间类型 id'},
       kindName: {type: 'string', description: '类型名关键词，如 研讨间'},
-      date: {type: 'string', description: 'today/tomorrow/YYYY-MM-DD，默认今天'},
+      date: {
+        type: 'string',
+        description: 'today/tomorrow/YYYY-MM-DD，默认今天',
+      },
       startTime: {type: 'string', description: 'HH:mm，可选'},
       endTime: {type: 'string', description: 'HH:mm，可选'},
     },
@@ -1251,11 +1300,16 @@ const findLibraryRoomsTool: AgentTool = {
     const kind =
       args.kindId != null
         ? types.find(t => t.kindId === Number(args.kindId))
-        : types.find(t => t.kindName.includes(String(args.kindName ?? '').trim()));
+        : types.find(t =>
+            t.kindName.includes(String(args.kindName ?? '').trim()),
+          );
     if (!kind) {
       return {
         error: '未找到研读间类型',
-        availableTypes: types.map(t => ({kindId: t.kindId, kindName: t.kindName})),
+        availableTypes: types.map(t => ({
+          kindId: t.kindId,
+          kindName: t.kindName,
+        })),
       };
     }
     const resources = await getLibraryRoomBookingResourceList(
@@ -1263,7 +1317,9 @@ const findLibraryRoomsTool: AgentTool = {
       kind.kindId,
     );
     const hasRange = Boolean(args.startTime && args.endTime);
-    const start = hasRange ? parseLocalTime(date, String(args.startTime)) : null;
+    const start = hasRange
+      ? parseLocalTime(date, String(args.startTime))
+      : null;
     const end = hasRange ? parseLocalTime(date, String(args.endTime)) : null;
     const rooms = resources
       .filter(room => {
@@ -1332,7 +1388,9 @@ const searchLibraryRoomMembersTool: AgentTool = {
   summarize: () => '搜索研读间成员',
   run: async (args: {keyword: string}) => {
     requireRealSession();
-    const records = await fuzzySearchLibraryId(String(args.keyword ?? '').trim());
+    const records = await fuzzySearchLibraryId(
+      String(args.keyword ?? '').trim(),
+    );
     return {
       count: records.length,
       members: records.slice(0, 10).map(item => ({
@@ -1412,7 +1470,11 @@ const bookSeatTool: AgentTool = {
       throw new Error('未在该分区找到目标座位');
     }
     if (seat.status !== 1) {
-      throw new Error(`目标座位当前状态不是可预约：${seatStatusLabel[seat.status] ?? seat.status}`);
+      throw new Error(
+        `目标座位当前状态不是可预约：${
+          seatStatusLabel[seat.status] ?? seat.status
+        }`,
+      );
     }
     return {
       title: '预约图书馆座位',
@@ -1489,7 +1551,10 @@ const cancelLibrarySeatBookingTool: AgentTool = {
   parameters: {
     type: 'object',
     properties: {
-      bookingId: {type: 'string', description: '预约取消 id，通常是记录里的 delId'},
+      bookingId: {
+        type: 'string',
+        description: '预约取消 id，通常是记录里的 delId',
+      },
       seatLabel: {type: 'string', description: '座位/位置描述，用于确认展示'},
       time: {type: 'string', description: '预约时间，用于确认展示'},
     },
@@ -1503,7 +1568,9 @@ const cancelLibrarySeatBookingTool: AgentTool = {
     requireRealSession();
     const records = await getLibraryBookingRecords();
     const bookingId = String(a.bookingId ?? '');
-    const record = records.find(item => item.delId === bookingId || item.id === bookingId);
+    const record = records.find(
+      item => item.delId === bookingId || item.id === bookingId,
+    );
     if (!record) {
       throw new Error('未找到要取消的图书馆座位预约');
     }
@@ -1524,7 +1591,9 @@ const cancelLibrarySeatBookingTool: AgentTool = {
   verify: async (a: any) => {
     const bookingId = String(a.bookingId ?? '');
     const records = await getLibraryBookingRecords();
-    const exists = records.some(item => item.delId === bookingId || item.id === bookingId);
+    const exists = records.some(
+      item => item.delId === bookingId || item.id === bookingId,
+    );
     return exists
       ? {ok: false, message: '取消后该预约仍在记录中'}
       : {ok: true, message: '已确认预约记录消失'};
@@ -1564,10 +1633,12 @@ const logoutNetworkDeviceTool: AgentTool = {
     }
     return {
       title: '注销校园网设备',
-      summary: `${device.authPermission} · ${maskIdentifier(device.ip4)} · ${maskIdentifier(
+      summary: `${device.authPermission} · ${maskIdentifier(
+        device.ip4,
+      )} · ${maskIdentifier(device.mac)}`,
+      affectedResource: `${maskIdentifier(device.ip4)} / ${maskIdentifier(
         device.mac,
       )}`,
-      affectedResource: `${maskIdentifier(device.ip4)} / ${maskIdentifier(device.mac)}`,
       reversible: false,
     };
   },
@@ -1647,7 +1718,8 @@ const bookLibraryRoomTool: AgentTool = {
     if (room.maxMinute && minutes > room.maxMinute) {
       throw new Error(`预约时长不能超过 ${room.maxMinute} 分钟`);
     }
-    const userCount = 1 + (Array.isArray(a.memberAccNos) ? a.memberAccNos.length : 0);
+    const userCount =
+      1 + (Array.isArray(a.memberAccNos) ? a.memberAccNos.length : 0);
     if (room.minUser && userCount < room.minUser) {
       throw new Error(`该研读间至少需要 ${room.minUser} 人`);
     }
@@ -1655,7 +1727,9 @@ const bookLibraryRoomTool: AgentTool = {
       throw new Error(`该研读间最多允许 ${room.maxUser} 人`);
     }
     if (
-      room.usage.some(usage => rangesOverlap(start, end, usage.start, usage.end))
+      room.usage.some(usage =>
+        rangesOverlap(start, end, usage.start, usage.end),
+      )
     ) {
       throw new Error('该时段已被占用');
     }
@@ -1668,12 +1742,18 @@ const bookLibraryRoomTool: AgentTool = {
   },
   confirmPrompt: (_a: any, preview?: ActionPreview) => ({
     title: '确认预约研读间',
-    message: `${preview?.summary ?? '将预约研读间'}\n\n预约占用公共资源，确认后会真实提交。`,
+    message: `${
+      preview?.summary ?? '将预约研读间'
+    }\n\n预约占用公共资源，确认后会真实提交。`,
   }),
   verify: async (a: any, result: any) => {
     const date = normalizeDateArg(a.date);
-    const start = new Date(toRoomTimestamp(date, String(a.startTime)).replace(' ', 'T'));
-    const end = new Date(toRoomTimestamp(date, String(a.endTime)).replace(' ', 'T'));
+    const start = new Date(
+      toRoomTimestamp(date, String(a.startTime)).replace(' ', 'T'),
+    );
+    const end = new Date(
+      toRoomTimestamp(date, String(a.endTime)).replace(' ', 'T'),
+    );
     const records = await getLibraryRoomBookingRecord();
     const found = records.find(record => {
       if (result?.recordUuid && record.uuid === result.recordUuid) {
@@ -1720,10 +1800,11 @@ const bookLibraryRoomTool: AgentTool = {
     const records = await getLibraryRoomBookingRecord().catch(() => []);
     const startDate = new Date(start.replace(' ', 'T'));
     const endDate = new Date(end.replace(' ', 'T'));
-    const record = records.find(item =>
-      (args.devName ? item.devName.includes(args.devName) : true) &&
-      sameMinute(item.begin, startDate) &&
-      sameMinute(item.end, endDate),
+    const record = records.find(
+      item =>
+        (args.devName ? item.devName.includes(args.devName) : true) &&
+        sameMinute(item.begin, startDate) &&
+        sameMinute(item.end, endDate),
     );
     return {
       ...result,
@@ -1759,14 +1840,18 @@ const cancelLibraryRoomBookingTool: AgentTool = {
     }
     return {
       title: '取消研读间预约',
-      summary: `${record.devName} · ${record.begin.toLocaleString()}-${record.end.toLocaleTimeString()}`,
+      summary: `${
+        record.devName
+      } · ${record.begin.toLocaleString()}-${record.end.toLocaleTimeString()}`,
       affectedResource: record.devName,
       reversible: false,
     };
   },
   confirmPrompt: (_a: any, preview?: ActionPreview) => ({
     title: '确认取消研读间预约',
-    message: `${preview?.summary ?? '将取消研读间预约'}\n\n取消后如需使用，需要重新预约。`,
+    message: `${
+      preview?.summary ?? '将取消研读间预约'
+    }\n\n取消后如需使用，需要重新预约。`,
     destructive: true,
   }),
   verify: async (a: any) => {
@@ -1805,7 +1890,10 @@ const listPersonalEventsTool: AgentTool = {
       start = week[0];
       end = week[6];
     }
-    const events = listPersonalEventsInRange(start || undefined, end || undefined);
+    const events = listPersonalEventsInRange(
+      start || undefined,
+      end || undefined,
+    );
     return {
       count: events.length,
       events: events.map(e => ({
@@ -1834,7 +1922,9 @@ const getWeekScheduleTool: AgentTool = {
   risk: 'read',
   permission: 'schedule.read',
   summarize: (a: {weekOffset?: number}) =>
-    `读取${a?.weekOffset === 0 || a?.weekOffset === undefined ? '本' : ''}周日程`,
+    `读取${
+      a?.weekOffset === 0 || a?.weekOffset === undefined ? '本' : ''
+    }周日程`,
   run: async (args: {weekOffset?: number}) => {
     const offset = Number(args?.weekOffset ?? 0);
     const dates = weekDatesContaining(todayLocalISO(), offset);
@@ -2101,7 +2191,11 @@ const getFullDegreeProgramTool: AgentTool = {
       courseSets: prog.courseSet.slice(0, 50).map(set => ({
         name: set.setName,
         type: set.type,
-        courses: set.course.map(c => ({id: c.id, name: c.name, credit: c.credit})),
+        courses: set.course.map(c => ({
+          id: c.id,
+          name: c.name,
+          credit: c.credit,
+        })),
       })),
     };
   },
@@ -2117,7 +2211,10 @@ const getNewsListTool: AgentTool = {
     properties: {
       page: {type: 'number', description: '页码，默认 1'},
       length: {type: 'number', description: '每页条数，默认 20'},
-      channel: {type: 'string', description: '频道标签，如 LM_JWGG（教务通知）'},
+      channel: {
+        type: 'string',
+        description: '频道标签，如 LM_JWGG（教务通知）',
+      },
     },
   },
   risk: 'read',
@@ -2125,7 +2222,11 @@ const getNewsListTool: AgentTool = {
   summarize: () => '获取校园新闻',
   run: async (args: {page?: number; length?: number; channel?: string}) => {
     requireRealSession();
-    const list = await getNewsList(args.page || 1, args.length || 20, args.channel as any);
+    const list = await getNewsList(
+      args.page || 1,
+      args.length || 20,
+      args.channel as any,
+    );
     return {
       count: list.length,
       news: list.slice(0, 30).map(n => ({
@@ -2157,9 +2258,19 @@ const searchNewsTool: AgentTool = {
   risk: 'read',
   permission: 'campus.news.read',
   summarize: (a: {key?: string}) => `搜索新闻：${a?.key || ''}`,
-  run: async (args: {key: string; page?: number; channel?: string; exactMatch?: boolean}) => {
+  run: async (args: {
+    key: string;
+    page?: number;
+    channel?: string;
+    exactMatch?: boolean;
+  }) => {
     requireRealSession();
-    const list = await searchNewsList(args.page || 1, args.key, args.channel as any, args.exactMatch);
+    const list = await searchNewsList(
+      args.page || 1,
+      args.key,
+      args.channel as any,
+      args.exactMatch,
+    );
     return {
       count: list.length,
       news: list.slice(0, 30).map(n => ({
@@ -2183,11 +2294,16 @@ const selectCourseTool: AgentTool = {
       priority: {
         type: 'string',
         enum: ['bx', 'xx', 'rx', 'ty', 'xwk', 'fxwk', 'tyk', 'cx'],
-        description: '选课类型：bx=必修, xx=限选, rx=任选, ty=体育, xwk=限选课PF, fxwk=非限选课PF, tyk=体育课PF, cx=重修',
+        description:
+          '选课类型：bx=必修, xx=限选, rx=任选, ty=体育, xwk=限选课PF, fxwk=非限选课PF, tyk=体育课PF, cx=重修',
       },
       courseId: {type: 'string', description: '课程号'},
       courseSeq: {type: 'string', description: '课序号'},
-      will: {type: 'number', enum: [1, 2, 3], description: '志愿等级：1=第一志愿, 2=第二志愿, 3=第三志愿'},
+      will: {
+        type: 'number',
+        enum: [1, 2, 3],
+        description: '志愿等级：1=第一志愿, 2=第二志愿, 3=第三志愿',
+      },
     },
     required: ['semesterId', 'priority', 'courseId', 'courseSeq', 'will'],
   },
@@ -2196,13 +2312,21 @@ const selectCourseTool: AgentTool = {
   requiresConfirmation: true,
   summarize: (a: {courseId?: string; courseSeq?: string}) =>
     `选课：${a?.courseId || ''}-${a?.courseSeq || ''}`,
-  dryRun: async (a: {semesterId: string; priority: Priority; courseId: string; courseSeq: string; will: number}) => {
+  dryRun: async (a: {
+    semesterId: string;
+    priority: Priority;
+    courseId: string;
+    courseSeq: string;
+    will: number;
+  }) => {
     requireRealSession();
     const result = await searchCrRemaining({
       semester: a.semesterId,
       id: a.courseId,
     });
-    const matched = result.courses.find(c => c.id === a.courseId && c.seq === Number(a.courseSeq));
+    const matched = result.courses.find(
+      c => c.id === a.courseId && c.seq === Number(a.courseSeq),
+    );
     if (!matched) {
       throw new Error('未找到该课程');
     }
@@ -2210,22 +2334,42 @@ const selectCourseTool: AgentTool = {
       throw new Error('该课程已无课余量');
     }
     const priorityLabels: Record<string, string> = {
-      bx: '必修', xx: '限选', rx: '任选', ty: '体育',
-      xwk: '限选课PF', fxwk: '非限选课PF', tyk: '体育课PF', cx: '重修',
+      bx: '必修',
+      xx: '限选',
+      rx: '任选',
+      ty: '体育',
+      xwk: '限选课PF',
+      fxwk: '非限选课PF',
+      tyk: '体育课PF',
+      cx: '重修',
     };
-    const willLabels: Record<number, string> = {1: '第一志愿', 2: '第二志愿', 3: '第三志愿'};
+    const willLabels: Record<number, string> = {
+      1: '第一志愿',
+      2: '第二志愿',
+      3: '第三志愿',
+    };
     return {
       title: '提交选课志愿',
-      summary: `${matched.name} · ${priorityLabels[a.priority] || a.priority} · ${willLabels[a.will] || a.will}`,
+      summary: `${matched.name} · ${
+        priorityLabels[a.priority] || a.priority
+      } · ${willLabels[a.will] || a.will}`,
       affectedResource: matched.name,
       reversible: false,
     };
   },
   confirmPrompt: (_a: any, preview?: ActionPreview) => ({
     title: '确认选课',
-    message: `${preview?.summary || '该课程'}\n\n选课操作不可撤销，确认后将提交选课志愿。`,
+    message: `${
+      preview?.summary || '该课程'
+    }\n\n选课操作不可撤销，确认后将提交选课志愿。`,
   }),
-  run: async (args: {semesterId: string; priority: Priority; courseId: string; courseSeq: string; will: number}) => {
+  run: async (args: {
+    semesterId: string;
+    priority: Priority;
+    courseId: string;
+    courseSeq: string;
+    will: number;
+  }) => {
     requireRealSession();
     const msg = await selectCourse(
       args.semesterId,
@@ -2241,8 +2385,7 @@ const selectCourseTool: AgentTool = {
 const getSelectedCoursesTool: AgentTool = {
   name: 'get_selected_courses',
   title: '已选课程列表',
-  description:
-    '获取当前学期已选的所有课程列表。回答"我选了什么课"之类的问题。',
+  description: '获取当前学期已选的所有课程列表。回答"我选了什么课"之类的问题。',
   parameters: {
     type: 'object',
     properties: {
@@ -2281,8 +2424,7 @@ const getSelectedCoursesTool: AgentTool = {
 const dropCourseTool: AgentTool = {
   name: 'drop_course',
   title: '退课',
-  description:
-    '删除已选的课程。这是高风险操作，执行前必须经过用户确认。',
+  description: '删除已选的课程。这是高风险操作，执行前必须经过用户确认。',
   parameters: {
     type: 'object',
     properties: {
@@ -2297,7 +2439,11 @@ const dropCourseTool: AgentTool = {
   requiresConfirmation: true,
   summarize: (a: {courseId?: string; courseSeq?: string; name?: string}) =>
     `退课：${a?.name || a?.courseId || ''}`,
-  dryRun: async (a: {courseId: string; courseSeq: string; semesterId?: string}) => {
+  dryRun: async (a: {
+    courseId: string;
+    courseSeq: string;
+    semesterId?: string;
+  }) => {
     requireRealSession();
     const semesters = await getCrAvailableSemesters();
     const targetSem = a.semesterId || semesters[0]?.id;
@@ -2305,7 +2451,9 @@ const dropCourseTool: AgentTool = {
       throw new Error('未找到可用学期');
     }
     const courses = await getSelectedCourses(targetSem);
-    const course = courses.find(c => c.id === a.courseId && c.seq === a.courseSeq);
+    const course = courses.find(
+      c => c.id === a.courseId && c.seq === a.courseSeq,
+    );
     if (!course) {
       throw new Error('未找到该已选课程');
     }
@@ -2318,10 +2466,16 @@ const dropCourseTool: AgentTool = {
   },
   confirmPrompt: (_a: any, preview?: ActionPreview) => ({
     title: '确认退课',
-    message: `${preview?.summary || '该课程'}\n\n退课操作不可撤销，请确认后再执行。`,
+    message: `${
+      preview?.summary || '该课程'
+    }\n\n退课操作不可撤销，请确认后再执行。`,
     destructive: true,
   }),
-  verify: async (args: {courseId: string; courseSeq: string; semesterId?: string}) => {
+  verify: async (args: {
+    courseId: string;
+    courseSeq: string;
+    semesterId?: string;
+  }) => {
     requireRealSession();
     const semesters = await getCrAvailableSemesters();
     const targetSem = args.semesterId || semesters[0]?.id;
@@ -2329,10 +2483,18 @@ const dropCourseTool: AgentTool = {
       return {ok: false, message: '未找到可用学期'};
     }
     const courses = await getSelectedCourses(targetSem);
-    const course = courses.find(c => c.id === args.courseId && c.seq === args.courseSeq);
-    return course ? {ok: false, message: '课程仍在已选列表中'} : {ok: true, message: '退课成功'};
+    const course = courses.find(
+      c => c.id === args.courseId && c.seq === args.courseSeq,
+    );
+    return course
+      ? {ok: false, message: '课程仍在已选列表中'}
+      : {ok: true, message: '退课成功'};
   },
-  run: async (args: {courseId: string; courseSeq: string; semesterId?: string}) => {
+  run: async (args: {
+    courseId: string;
+    courseSeq: string;
+    semesterId?: string;
+  }) => {
     requireRealSession();
     const semesters = await getCrAvailableSemesters();
     const targetSem = args.semesterId || semesters[0]?.id;

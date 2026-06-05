@@ -34,12 +34,39 @@ function contactLine(message: MailMessageSummary): string {
 }
 
 function formatMailDate(value: string): string {
-  if (!value) {
+  const normalized = String(value || '').trim();
+  if (!normalized) {
     return '';
   }
-  const d = new Date(value);
+
+  const visibleMonthDay = /^(\d{1,2})-(\d{1,2})$/.exec(normalized);
+  if (visibleMonthDay) {
+    return `${visibleMonthDay[1].padStart(
+      2,
+      '0',
+    )}-${visibleMonthDay[2].padStart(2, '0')}`;
+  }
+
+  const chineseDate =
+    /(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日(?:.*?(\d{1,2}):(\d{2}))?/.exec(
+      normalized,
+    );
+  const slashDate =
+    /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?/.exec(
+      normalized,
+    );
+  const parts = chineseDate || slashDate;
+  const d = parts
+    ? new Date(
+        Number(parts[1]),
+        Number(parts[2]) - 1,
+        Number(parts[3]),
+        Number(parts[4] ?? 0),
+        Number(parts[5] ?? 0),
+      )
+    : new Date(normalized);
   if (Number.isNaN(d.getTime())) {
-    return value.slice(0, 16);
+    return normalized.slice(0, 16);
   }
   const now = new Date();
   const sameDay =
@@ -51,7 +78,9 @@ function formatMailDate(value: string): string {
   if (sameDay) {
     return `${hh}:${mm}`;
   }
-  return `${d.getMonth() + 1}-${String(d.getDate()).padStart(2, '0')}`;
+  return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate(),
+  ).padStart(2, '0')}`;
 }
 
 export function CampusMailScreen({navigation}: Props) {
@@ -73,7 +102,9 @@ export function CampusMailScreen({navigation}: Props) {
         setLoading(true);
       }
       setError(null);
-      webRef.current?.injectJavaScript(mailListBridgeScript(folder.id, query.trim()));
+      webRef.current?.injectJavaScript(
+        mailListBridgeScript(folder.id, query.trim()),
+      );
     },
     [folder.id, query],
   );
@@ -171,7 +202,9 @@ export function CampusMailScreen({navigation}: Props) {
         <View style={styles.headerText}>
           <Text style={styles.headerTitle}>原生邮箱</Text>
           <Text style={styles.headerSub}>
-            {query.trim() ? `搜索结果 · ${messages.length}` : `${folder.name} · ${total || messages.length}`}
+            {query.trim()
+              ? `搜索结果 · ${messages.length}`
+              : `${folder.name} · ${total || messages.length}`}
           </Text>
         </View>
       </View>
@@ -186,7 +219,9 @@ export function CampusMailScreen({navigation}: Props) {
           onSubmitEditing={() => load().catch(() => undefined)}
           style={styles.searchInput}
         />
-        <Pressable style={styles.searchButton} onPress={() => load().catch(() => undefined)}>
+        <Pressable
+          style={styles.searchButton}
+          onPress={() => load().catch(() => undefined)}>
           <Text style={styles.searchButtonText}>搜索</Text>
         </Pressable>
       </View>
@@ -206,7 +241,9 @@ export function CampusMailScreen({navigation}: Props) {
             <Text
               style={[
                 styles.folderText,
-                folder.id === item.id && !query.trim() && styles.folderTextActive,
+                folder.id === item.id &&
+                  !query.trim() &&
+                  styles.folderTextActive,
               ]}>
               {item.name}
             </Text>
@@ -217,7 +254,11 @@ export function CampusMailScreen({navigation}: Props) {
       {error ? (
         <View style={styles.errorBox}>
           <Text style={styles.errorText}>{error}</Text>
-          <PrimaryButton label="重试" onPress={() => load().catch(() => undefined)} variant="ghost" />
+          <PrimaryButton
+            label="重试"
+            onPress={() => load().catch(() => undefined)}
+            variant="ghost"
+          />
         </View>
       ) : null}
 
@@ -275,7 +316,7 @@ function mailListBridgeScript(fid: number, query: string): string {
             from: [{name: normalize(from && from.textContent), address: (from && from.getAttribute('data-email')) || ''}],
             to: [],
             subject: normalize(subject && subject.textContent) || '(无主题)',
-            date: normalize((time && (time.getAttribute('title') || time.textContent)) || ''),
+            date: normalize((time && (time.textContent || time.getAttribute('title'))) || ''),
             unread: !row.classList.contains('read'),
             flagged: false,
             hasAttachment: !!attachmentIcon,
@@ -395,7 +436,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderSubtle,
   },
-  folderChipActive: {backgroundColor: colors.primaryMuted, borderColor: colors.primary},
+  folderChipActive: {
+    backgroundColor: colors.primaryMuted,
+    borderColor: colors.primary,
+  },
   folderText: {...typography.caption, color: colors.textSecondary},
   folderTextActive: {color: colors.primary, fontWeight: '600'},
   errorBox: {
@@ -406,9 +450,18 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   errorText: {...typography.caption, color: colors.error},
-  loading: {flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm},
+  loading: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
   loadingText: {...typography.caption, color: colors.textMuted},
-  listContent: {padding: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xxl},
+  listContent: {
+    padding: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xxl,
+  },
   messageRow: {
     padding: spacing.md,
     borderRadius: radii.lg,
@@ -421,7 +474,12 @@ const styles = StyleSheet.create({
   pressed: {opacity: 0.72},
   messageTop: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm},
   senderRow: {flex: 1, flexDirection: 'row', alignItems: 'center', gap: 7},
-  unreadDot: {width: 7, height: 7, borderRadius: 4, backgroundColor: colors.primary},
+  unreadDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
+  },
   sender: {...typography.body, color: colors.textSecondary},
   unreadText: {color: colors.text, fontWeight: '700'},
   date: {...typography.micro, color: colors.textMuted},

@@ -26,6 +26,7 @@ import {DetailHeader, EmptyState} from '../common/components/Ui';
 import {RootStackParamList} from '../../app/navigation/types';
 import {
   BuildingEntry,
+  CLASSROOM_PERIODS,
   ClassroomState,
   ClassroomStateResult,
   ClassroomStatus,
@@ -82,7 +83,10 @@ function splitClassroomName(name: string): {id: string; capacity: string} {
   const idx = name.indexOf(':');
   if (idx === -1) return {id: name.trim(), capacity: ''};
   const id = name.slice(0, idx).trim();
-  const cap = name.slice(idx + 1).replace(/[（(].*?[)）]/g, '').trim();
+  const cap = name
+    .slice(idx + 1)
+    .replace(/[（(].*?[)）]/g, '')
+    .trim();
   return {id, capacity: cap};
 }
 
@@ -129,7 +133,8 @@ export function ClassroomScreen({navigation}: Props) {
         if (!cancelled) setState(s);
       })
       .catch(e => {
-        if (!cancelled) setStateError(e instanceof Error ? e.message : '加载失败');
+        if (!cancelled)
+          setStateError(e instanceof Error ? e.message : '加载失败');
       })
       .finally(() => {
         if (!cancelled) setStateLoading(false);
@@ -149,7 +154,10 @@ export function ClassroomScreen({navigation}: Props) {
         activeDay * PERIODS_PER_DAY,
         (activeDay + 1) * PERIODS_PER_DAY,
       );
-      if (slice.length > 0 && slice.every(s => s === ClassroomStatus.AVAILABLE)) {
+      if (
+        slice.length > 0 &&
+        slice.every(s => s === ClassroomStatus.AVAILABLE)
+      ) {
         freeRooms += 1;
       }
     }
@@ -195,7 +203,10 @@ export function ClassroomScreen({navigation}: Props) {
                     setSelected(b);
                     setWeek(b.weekNumber);
                   }}
-                  style={[styles.buildingChip, active && styles.buildingChipActive]}>
+                  style={[
+                    styles.buildingChip,
+                    active && styles.buildingChipActive,
+                  ]}>
                   <Text
                     style={[
                       styles.buildingText,
@@ -311,21 +322,34 @@ export function ClassroomScreen({navigation}: Props) {
                   </View>
                 ))}
               </View>
+              <View style={styles.periodLegend}>
+                {CLASSROOM_PERIODS.map(p => (
+                  <Text key={p.period} style={styles.periodLegendText}>
+                    {p.period} {p.timeRange}
+                  </Text>
+                ))}
+              </View>
               <View style={styles.tableHeader}>
                 <Text style={[styles.headerCell, {flex: 3}]}>教室</Text>
-                <Text style={[styles.headerCell, styles.headerCellCenter, {flex: 1}]}>
+                <Text
+                  style={[
+                    styles.headerCell,
+                    styles.headerCellCenter,
+                    {flex: 1},
+                  ]}>
                   容量
                 </Text>
-                <Text style={[styles.headerCell, styles.headerCellCenter, {flex: 5}]}>
-                  1   2   3   4   5   6
+                <Text
+                  style={[
+                    styles.headerCell,
+                    styles.headerCellCenter,
+                    {flex: 5},
+                  ]}>
+                  1 2 3 4 5 6
                 </Text>
               </View>
               {state.classroomStates.map(cs => (
-                <ClassroomRow
-                  key={cs.name}
-                  classroom={cs}
-                  day={activeDay}
-                />
+                <ClassroomRow key={cs.name} classroom={cs} day={activeDay} />
               ))}
             </ScrollView>
           )}
@@ -365,7 +389,10 @@ function ClassroomRow({
       <View style={styles.periodRow}>
         {(slice.length > 0
           ? slice
-          : Array.from({length: PERIODS_PER_DAY}, () => ClassroomStatus.AVAILABLE)
+          : Array.from(
+              {length: PERIODS_PER_DAY},
+              () => ClassroomStatus.AVAILABLE,
+            )
         ).map((status, i) => (
           <View
             key={i}
@@ -420,7 +447,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  buildingChipActive: {borderColor: colors.primary, backgroundColor: colors.primaryMuted},
+  buildingChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryMuted,
+  },
   buildingText: {...typography.caption, color: colors.text},
   buildingTextActive: {color: colors.primary, fontWeight: '600'},
 
@@ -490,6 +520,21 @@ const styles = StyleSheet.create({
   legendItem: {flexDirection: 'row', alignItems: 'center', gap: 4},
   legendDot: {width: 12, height: 12, borderRadius: 3},
   legendText: {...typography.micro, color: colors.textSecondary},
+  periodLegend: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.xs,
+  },
+  periodLegendText: {
+    ...typography.micro,
+    color: colors.textMuted,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 3,
+  },
 
   tableHeader: {
     flexDirection: 'row',

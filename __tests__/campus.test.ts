@@ -1,5 +1,8 @@
 import {parseUrlToWebVPN} from '../src/services/webvpn/parseUrl';
-import {mapScheduleRows, normalizeScheduleTime} from '../src/services/campus/scheduleParser';
+import {
+  mapScheduleRows,
+  normalizeScheduleTime,
+} from '../src/services/campus/scheduleParser';
 import {
   buildWeekSliceViews,
   flattenSchedulesToEvents,
@@ -7,11 +10,9 @@ import {
 } from '../src/services/campus/scheduleModel';
 import {buildAgentContext} from '../src/services/ai/agentService';
 import {demoLearningSnapshot} from '../src/fixtures/demoData';
+import {gb2312PercentEncode, gb2312PercentDecode} from '../src/utils/encoding';
 import {
-  gb2312PercentEncode,
-  gb2312PercentDecode,
-} from '../src/utils/encoding';
-import {
+  CLASSROOM_PERIODS,
   ClassroomStatus,
   PERIODS_PER_DAY,
   parseClassroomList,
@@ -21,7 +22,9 @@ import {normalizeCampusCardTransactionAmount} from '../src/services/campus/campu
 
 describe('parseUrlToWebVPN', () => {
   it('maps learn host to webvpn token path', () => {
-    const result = parseUrlToWebVPN('https://learn.tsinghua.edu.cn/b/wlxt/kc/xk/xsxk.shtml');
+    const result = parseUrlToWebVPN(
+      'https://learn.tsinghua.edu.cn/b/wlxt/kc/xk/xsxk.shtml',
+    );
     expect(result).toContain('webvpn.tsinghua.edu.cn');
     expect(result).toContain('fcf2408e297e7c4377068ea48d546d30ca8cc97bcc');
   });
@@ -106,8 +109,12 @@ describe('campus card transactions', () => {
   });
 
   it('uses transaction type when the backend provides one', () => {
-    expect(normalizeCampusCardTransactionAmount({txamt: 1270, tradetype: 1})).toBe(-12.7);
-    expect(normalizeCampusCardTransactionAmount({txamt: 5000, tradetype: 2})).toBe(50);
+    expect(
+      normalizeCampusCardTransactionAmount({txamt: 1270, tradetype: 1}),
+    ).toBe(-12.7);
+    expect(
+      normalizeCampusCardTransactionAmount({txamt: 5000, tradetype: 2}),
+    ).toBe(50);
   });
 });
 
@@ -190,14 +197,24 @@ describe('parseClassroomList', () => {
 });
 
 describe('parseClassroomState', () => {
+  it('uses Tsinghua big-period classroom times', () => {
+    expect(PERIODS_PER_DAY).toBe(6);
+    expect(CLASSROOM_PERIODS.map(p => p.timeRange)).toEqual([
+      '08:00-09:35',
+      '09:50-12:15',
+      '13:30-15:05',
+      '15:20-16:55',
+      '17:10-18:45',
+      '19:20-21:45',
+    ]);
+  });
+
   const buildRow = (
     name: string,
     statusClasses: Array<string | null>,
   ): string => {
     const tds = statusClasses
-      .map(cls =>
-        cls === null ? '<td></td>' : `<td class="${cls}"></td>`,
-      )
+      .map(cls => (cls === null ? '<td></td>' : `<td class="${cls}"></td>`))
       .join('');
     // 与上游 HTML 结构对齐（基于 thu-info-lib 解析路径 `tr.children[1].children[2]` + `slice(3)` 推断）：
     //   tr 子节点序：
@@ -218,7 +235,10 @@ describe('parseClassroomState', () => {
 
   it('parses scrollContent rows with classroom name + 42 status cells', () => {
     // 42 = 7 天 × 6 节
-    const allAvailable: Array<string | null> = Array.from({length: 42}, () => null);
+    const allAvailable: Array<string | null> = Array.from(
+      {length: 42},
+      () => null,
+    );
     // 周一第 1 节上课、第 2 节考试、第 3 节借用、第 4 节停用
     const monday: Array<string | null> = [
       'onteaching',
@@ -275,7 +295,9 @@ describe('parseClassroomState', () => {
       ClassroomStatus.AVAILABLE,
     ]);
     // 其他天全空
-    expect(r1.status.slice(6).every(s => s === ClassroomStatus.AVAILABLE)).toBe(true);
+    expect(r1.status.slice(6).every(s => s === ClassroomStatus.AVAILABLE)).toBe(
+      true,
+    );
 
     const r2 = result.classroomStates[1];
     expect(r2.name).toBe('6A102:120(人)');
@@ -301,8 +323,8 @@ describe('parseClassroomState', () => {
   });
 
   it('throws when scrollContent missing entirely (session likely dead)', () => {
-    expect(() => parseClassroomState('<html><body>nope</body></html>', 1)).toThrow(
-      /scrollContent/,
-    );
+    expect(() =>
+      parseClassroomState('<html><body>nope</body></html>', 1),
+    ).toThrow(/scrollContent/);
   });
 });

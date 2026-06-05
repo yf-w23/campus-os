@@ -39,8 +39,17 @@ const CLASSROOM_YYFWID = '40470BB47E0849E9EF717983490BC964';
 const SYSTEM_TIMEOUT_MSG = 'time out用户登陆超时或访问内容不存在';
 const WEBVPN_TITLE = '<title>清华大学WebVPN</title>';
 
-// 与 thu-info-lib 上游约定一致：每天 6 节、每周 7 天，所以 status 数组长度 = 42
-export const PERIODS_PER_DAY = 6;
+export const CLASSROOM_PERIODS = [
+  {period: 1, label: '第1节', timeRange: '08:00-09:35'},
+  {period: 2, label: '第2节', timeRange: '09:50-12:15'},
+  {period: 3, label: '第3节', timeRange: '13:30-15:05'},
+  {period: 4, label: '第4节', timeRange: '15:20-16:55'},
+  {period: 5, label: '第5节', timeRange: '17:10-18:45'},
+  {period: 6, label: '第6节', timeRange: '19:20-21:45'},
+] as const;
+
+// 与 thu-info-lib 上游约定一致：每天 6 个大节、每周 7 天，所以 status 数组长度 = 42
+export const PERIODS_PER_DAY = CLASSROOM_PERIODS.length;
 export const DAYS_PER_WEEK = 7;
 
 export enum ClassroomStatus {
@@ -218,10 +227,12 @@ function parseClassroomRow(tr: any): ClassroomState | null {
   if (!name) return null;
 
   // —— 状态 —— //
-  const statusCells = children.slice(3).filter(
-    n => n?.nodeType === 1 && n?.tagName?.toLowerCase?.() === 'td',
+  const statusCells = children
+    .slice(3)
+    .filter(n => n?.nodeType === 1 && n?.tagName?.toLowerCase?.() === 'td');
+  const status: ClassroomStatus[] = statusCells.map(td =>
+    classifyStatusCell(td),
   );
-  const status: ClassroomStatus[] = statusCells.map(td => classifyStatusCell(td));
 
   // 没有任何状态格的行通常是表头或脚注，跳过。
   if (status.length === 0) return null;
