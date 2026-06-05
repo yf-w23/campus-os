@@ -133,6 +133,10 @@ export const zh = {
         title: '校园网',
         subtitle: '余额、账号与在线设备',
       },
+      mail: {
+        title: '清华邮箱',
+        subtitle: '收信、写信与附件管理',
+      },
       reservation: {
         title: '图书馆预约',
         subtitle: '座位查询与预约、研读间',

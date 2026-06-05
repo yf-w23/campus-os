@@ -15,6 +15,7 @@ import {uiImages} from '../../app/assets/uiImages';
 export {GradesScreen} from './GradesScreen';
 export {ClassroomScreen} from './ClassroomScreen';
 export {PEtestScreen} from './PEtestScreen';
+export {CampusMailScreen as MailScreen} from './CampusMailScreen';
 
 const icons = {
   dormitory: uiImages.campusDormitory,

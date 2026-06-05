@@ -279,6 +279,7 @@ export class WebVPNTransport {
         xhr.ontimeout = () => resolve('');
         xhr.onerror = () => resolve('');
         xhr.open('GET', url);
+        xhr.withCredentials = true;
         xhr.send();
       } catch {
         resolve('');

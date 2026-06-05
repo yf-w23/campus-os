@@ -28,7 +28,8 @@ interface Entry {
     | 'dormitory'
     | 'finance'
     | 'network'
-    | 'reservation';
+    | 'reservation'
+    | 'mail';
   icon: ImageSourcePropType;
 }
 
@@ -67,6 +68,11 @@ const entries: Entry[] = [
     key: 'CampusReservation',
     i18nKey: 'reservation',
     icon: uiImages.campusReservation,
+  },
+  {
+    key: 'CampusMail',
+    i18nKey: 'mail',
+    icon: uiImages.campusMail,
   },
 ];
 

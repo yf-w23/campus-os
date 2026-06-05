@@ -140,6 +140,10 @@ export const en: TranslationKey = {
         title: 'Campus Network',
         subtitle: 'Balance, account, and online devices',
       },
+      mail: {
+        title: 'Tsinghua Mail',
+        subtitle: 'Read, compose, and manage attachments',
+      },
       reservation: {
         title: 'Library Booking',
         subtitle: 'Seats, bookings, and study rooms',

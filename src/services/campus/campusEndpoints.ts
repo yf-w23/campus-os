@@ -15,6 +15,8 @@ const LIB_TOKEN =
   '77726476706e69737468656265737421e3f24088693c6152301c9aa596522b204c02212b859d0a19';
 const ROOM_BOOKING_TOKEN =
   '77726476706e69737468656265737421f3f643d22b396a1e6a1b80a29f5d363409e413829737d1';
+const INFO_TOKEN =
+  '77726476706e69737468656265737421f9f9479369247b59700f81b9991b2631506205de';
 // 体育馆预约（场馆预约时用）
 export const SPORTS_TOKEN =
   '77726476706e69737468656265737421f6f6571f29396a1e75469ea69b';
@@ -42,6 +44,8 @@ export const DORM_HEALTH_URL = `${WEBVPN_BASE}/https/${DORM_TOKEN}/weixin/weixin
 export const LIBRARY_URL = `${WEBVPN_BASE}/https/${LIB_TOKEN}/home/web/f_second`;
 /** 图书馆研讨间 */
 export const LIBRARY_ROOM_URL = `${WEBVPN_BASE}/https/${ROOM_BOOKING_TOKEN}/`;
+/** 清华邮箱：经信息门户 yyfwid 漫游到 Coremail，进入后可收信 / 写信。 */
+export const MAIL_PORTAL_URL = `${WEBVPN_BASE}/https/${INFO_TOKEN}/f/info/portal_fg/common/roamingToApp?yyfwid=${SUBSYSTEM_YYFWID.mail}`;
 
 /**
  * 子系统会话激活方式：
@@ -83,5 +87,10 @@ export const SUBSYSTEM_ENTRIES: Record<string, SubsystemEntry> = {
   [LIBRARY_ROOM_URL]: {
     url: LIBRARY_ROOM_URL,
     kind: 'cab-login',
+  },
+  [MAIL_PORTAL_URL]: {
+    url: MAIL_PORTAL_URL,
+    kind: 'id-roam',
+    payload: SUBSYSTEM_YYFWID.infoPortal,
   },
 };

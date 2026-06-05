@@ -23,11 +23,15 @@ export const LEARN_LOGIN_YYFWID = 'bb5df85216504820be7bba2b0ae1535b/0';
 
 // 校园子系统 yyfwid（对照 thu-info-lib/src/lib/*.ts）
 export const SUBSYSTEM_YYFWID = {
+  // 信息门户首页：邮箱等门户应用要先建立这个后端会话，再走 roamingToApp。
+  infoPortal: INFO_PORTAL_YYFWID,
   // 宿舍 / 电费（dorm.ts）
   dormElectricity: '0a993de7e533cd43a594459abdcab27d/1',
   dormHealth: '0a993de7e533cd43a594459abdcab27d/0',
   // 图书馆座位（library.ts getAccessToken）
   librarySeat: 'ef84f6d6784f6b834e5214f432d6173f/0?/api/id_tsinghua_callback',
+  // 清华邮箱（信息门户“清华邮箱”入口）
+  mail: 'F315577F5BF20E1B1668EDD594B2C04F',
 } as const;
 
 export const ENDPOINTS = {

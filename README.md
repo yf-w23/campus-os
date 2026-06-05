@@ -8,7 +8,7 @@
 
 把课表、作业、成绩、教室、电费、校园卡、校园网、图书馆座位、AI 助手、AI 记忆、AI 工作流与主动监控揉到一个 App 里。完全 native UI，不依赖任何业务后端 —— 你的账号密码和 API Key 只存在你手机的安全存储里。
 
-**当前版本：v1.1.2** · [下载 APK](https://github.com/yf-w23/campus-os/releases/latest)
+**当前版本：v1.1.3** · [下载 APK](https://github.com/yf-w23/campus-os/releases/latest)
 
 ---
 
@@ -18,7 +18,7 @@
 
 [**Releases → 最新版本**](https://github.com/yf-w23/campus-os/releases/latest)
 
-下载 `campus-os-v1.1.2-android-arm64.apk`（约 33 MB），传到 Android 手机安装即可。
+下载 `campus-os-v1.1.3-android-arm64.apk`（约 34 MB），传到 Android 手机安装即可。
 
 - 系统要求：Android 7+（API 24+）
 - 架构：arm64-v8a（2018 年后绝大多数手机都是；32 位 / x86 模拟器暂不支持）
@@ -98,6 +98,7 @@ npm run android           # 另开终端编译 debug 包
 | 图书馆座位 | 馆 → 楼层 → 分区 → 座位全导航；可预约，需确认 |
 | 研读间预约 | 浏览研讨间类型 + 全部资源 |
 | 选课系统 | AI 可查询可选/已选课程，并在强确认后选课或退课 |
+| 清华邮箱 | 原生收件箱/草稿箱/已发送/已删除/垃圾邮件列表、读信与写信；通过官方 Coremail 会话桥接，避免重复登录 |
 
 ### AI `ai` — **Agent + 多会话 + 记忆 + 工作流**
 
@@ -120,6 +121,19 @@ npm run android           # 另开终端编译 debug 包
 - **操作审计**：查看全部 AI 操作的脱敏日志
 - **AI 记忆**：查看/编辑/清除 AI 记忆
 - 退出登录（清掉 Keychain + Redux + 持久化会话标记）
+
+---
+
+## v1.1.3 更新摘要（2026-06）
+
+| 项目 | 说明 |
+|---|---|
+| 清华邮箱 | 新增清华邮箱原生入口，支持收件箱、草稿箱、已发送、已删除、垃圾邮件切换、读信与写信 |
+| 邮箱会话 | 通过信息门户进入官方 Coremail，并使用隐藏同源 WebView 桥接真实邮箱会话，解决直接调用 Coremail RPC 的安全 Cookie 校验问题 |
+| 邮箱体验 | 修复邮箱文件夹切换时页面被隐藏 WebView 顶开后回弹的布局跳动问题 |
+| 校园页 | 调整校园 tag 顺序，将清华邮箱放到校园功能列表底部 |
+| 版本号 | 从 v1.1.2 升级至 v1.1.3，Android versionCode 升至 13 |
+| Release | [v1.1.3](https://github.com/yf-w23/campus-os/releases/tag/v1.1.3) 附 arm64 APK |
 
 ---
 

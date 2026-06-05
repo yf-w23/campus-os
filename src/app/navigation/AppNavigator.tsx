@@ -18,6 +18,7 @@ import {
   GradesScreen,
   PEtestScreen,
   DormitoryScreen,
+  MailScreen,
   ReservationScreen,
 } from '../../features/campus/subscreens';
 import {EleBalanceScreen} from '../../features/campus/EleBalanceScreen';
@@ -26,6 +27,9 @@ import {CampusFinanceScreen} from '../../features/campus/CampusFinanceScreen';
 import {CampusNetworkScreen} from '../../features/campus/CampusNetworkScreen';
 import {CampusLaundryScreen} from '../../features/campus/CampusLaundryScreen';
 import {CampusLaundryDetailScreen} from '../../features/campus/CampusLaundryDetailScreen';
+import {CampusMailComposeScreen} from '../../features/campus/CampusMailComposeScreen';
+import {CampusMailDetailScreen} from '../../features/campus/CampusMailDetailScreen';
+import {CampusMailViewerScreen} from '../../features/campus/CampusMailViewerScreen';
 import {LibraryNativeScreen} from '../../features/campus/LibraryNativeScreen';
 import {LibraryFloorScreen} from '../../features/campus/LibraryFloorScreen';
 import {LibrarySectionScreen} from '../../features/campus/LibrarySectionScreen';
@@ -214,6 +218,14 @@ export function AppNavigator() {
             />
             <Stack.Screen name="CampusFinance" component={CampusFinanceScreen} />
             <Stack.Screen name="CampusNetwork" component={CampusNetworkScreen} />
+            <Stack.Screen name="CampusMail" component={MailScreen} />
+            <Stack.Screen name="CampusMailDetail" component={CampusMailDetailScreen} />
+            <Stack.Screen name="CampusMailCompose" component={CampusMailComposeScreen} />
+            <Stack.Screen
+              name="CampusMailViewer"
+              component={CampusMailViewerScreen}
+              options={{presentation: 'modal'}}
+            />
             <Stack.Screen name="CampusEleBalance" component={EleBalanceScreen} />
             <Stack.Screen name="CampusEleRecharge" component={EleRechargeScreen} />
             <Stack.Screen name="CampusReservation" component={ReservationScreen} />

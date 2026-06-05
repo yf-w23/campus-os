@@ -27,6 +27,24 @@ export type RootStackParamList = {
   };
   CampusFinance: undefined;
   CampusNetwork: undefined;
+  CampusMail: undefined;
+  CampusMailViewer: {
+    view: 'home' | 'inbox' | 'compose';
+    title?: string;
+  };
+  CampusMailDetail: {
+    id: string;
+    title?: string;
+    fid?: number;
+  };
+  CampusMailCompose: {
+    mode?: 'new' | 'reply' | 'forward';
+    to?: string;
+    cc?: string;
+    bcc?: string;
+    subject?: string;
+    content?: string;
+  };
   /** 电费余额（native）*/
   CampusEleBalance: undefined;
   /** 电费充值（native）*/
