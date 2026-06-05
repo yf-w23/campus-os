@@ -70,6 +70,11 @@ import {
   getFullDegreeProgram,
 } from '../campus/program';
 import {getNewsList, searchNewsList} from '../campus/news';
+import {
+  listNativeMailFolders,
+  listNativeMailMessages,
+  readNativeMailMessage,
+} from '../campus/nativeMail';
 import {fetchHomeworkDetail} from '../campus/homeworkDetail';
 import {patchAIMemory} from '../../storage/aiMemoryStorage';
 import {
@@ -2506,6 +2511,126 @@ const dropCourseTool: AgentTool = {
   },
 };
 
+const listMailFoldersTool: AgentTool = {
+  name: 'list_mail_folders',
+  title: '邮箱文件夹',
+  description:
+    '列出已配置清华邮箱客户端中的可查询文件夹。只读；不会发送、删除或移动邮件。',
+  parameters: {type: 'object', properties: {}},
+  risk: 'read',
+  permission: 'campus.mail.read',
+  summarize: () => '查询邮箱文件夹',
+  run: async () => {
+    requireRealSession();
+    const folders = await listNativeMailFolders();
+    return {
+      folders: folders.map(folder => ({
+        id: folder.id,
+        name: folder.name,
+        system: folder.system,
+        folderName: folder.folderName,
+      })),
+    };
+  },
+};
+
+const searchMailMessagesTool: AgentTool = {
+  name: 'search_mail_messages',
+  title: '查询邮件列表',
+  description:
+    '查询或搜索清华邮箱邮件列表。folderSystem 可为 inbox/drafts/sent/deleted/junk，默认 inbox；query 为空时返回最近邮件。只读。',
+  parameters: {
+    type: 'object',
+    properties: {
+      folderSystem: {
+        type: 'string',
+        enum: ['inbox', 'drafts', 'sent', 'deleted', 'junk'],
+        description: '默认 inbox',
+      },
+      query: {type: 'string', description: '搜索关键词，可为空'},
+      limit: {type: 'number', description: '返回数量，默认 10，最多 30'},
+    },
+  },
+  risk: 'read',
+  permission: 'campus.mail.read',
+  summarize: (a: {query?: string}) =>
+    a?.query ? `搜索邮件：${a.query}` : '查询最近邮件',
+  run: async (args: {
+    folderSystem?: string;
+    query?: string;
+    limit?: number;
+  }) => {
+    requireRealSession();
+    const folders = await listNativeMailFolders();
+    const folder =
+      folders.find(item => item.system === (args.folderSystem || 'inbox')) ??
+      folders[0];
+    if (!folder) {
+      throw new Error('未找到邮箱文件夹');
+    }
+    const limit = Math.min(30, Math.max(1, Number(args.limit || 10)));
+    const result = await listNativeMailMessages(
+      folder,
+      args.query || '',
+      limit,
+    );
+    return {
+      folder: {
+        name: folder.name,
+        system: folder.system,
+        folderName: folder.folderName,
+      },
+      total: result.total,
+      messages: result.messages.slice(0, limit).map(message => ({
+        id: message.id,
+        subject: message.subject,
+        from: message.from,
+        to: message.to,
+        date: message.date,
+        unread: message.unread,
+        hasAttachment: message.hasAttachment,
+        brief: message.brief,
+      })),
+    };
+  },
+};
+
+const readMailMessageTool: AgentTool = {
+  name: 'read_mail_message',
+  title: '读取邮件详情',
+  description:
+    '读取清华邮箱中指定邮件的正文摘要和附件列表。需要先通过 search_mail_messages 拿到 id 和 folderName。只读。',
+  parameters: {
+    type: 'object',
+    properties: {
+      id: {type: 'string', description: '邮件 UID'},
+      folderName: {type: 'string', description: 'IMAP 文件夹名，如 INBOX'},
+    },
+    required: ['id', 'folderName'],
+  },
+  risk: 'read',
+  permission: 'campus.mail.read',
+  summarize: () => '读取邮件详情',
+  run: async (args: {id: string; folderName: string}) => {
+    requireRealSession();
+    const message = await readNativeMailMessage(args.folderName, args.id);
+    return {
+      id: message.id,
+      subject: message.subject,
+      from: message.from,
+      to: message.to,
+      cc: message.cc,
+      date: message.date,
+      hasAttachment: message.hasAttachment,
+      attachments: message.attachments.map(item => ({
+        name: item.name,
+        size: item.size,
+      })),
+      text: message.contentText.slice(0, 6000),
+    };
+  },
+};
+
 export const AGENT_TOOLS: AgentTool[] = [
   getTodayTool,
   getWeekScheduleTool,
@@ -2527,6 +2652,9 @@ export const AGENT_TOOLS: AgentTool[] = [
   getNetworkAccountInfoTool,
   listNetworkDevicesTool,
   logoutNetworkDeviceTool,
+  listMailFoldersTool,
+  searchMailMessagesTool,
+  readMailMessageTool,
   listSportsVenuesTool,
   searchSportsSlotsTool,
   listSportsReservationRecordsTool,

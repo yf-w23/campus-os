@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -11,22 +11,31 @@ import {
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
-import {WebView, WebViewMessageEvent} from 'react-native-webview';
+import {WebView} from 'react-native-webview';
 import {colors, radii, spacing, typography} from '../../app/theme';
 import {DetailHeader} from '../common/components/Ui';
 import {PrimaryButton} from '../common/components/Buttons';
 import {RootStackParamList} from '../../app/navigation/types';
-import {MAIL_PORTAL_URL} from '../../services/campus/campusEndpoints';
 import {
   MAIL_FOLDERS,
   MailContact,
   MailMessageDetail,
-  deleteMailMessages,
-  markMailRead,
-  moveMailMessages,
 } from '../../services/campus/mail';
+import {
+  deleteNativeMailMessage,
+  downloadNativeMailAttachment,
+  listNativeMailFolders,
+  MailFolderBinding,
+  markNativeMailRead,
+  moveNativeMailMessage,
+  readNativeMailMessage,
+} from '../../services/campus/nativeMail';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CampusMailDetail'>;
+
+type DetailWithInline = MailMessageDetail & {
+  inlineImages?: Record<string, string>;
+};
 
 function contactsText(list: MailContact[]): string {
   if (list.length === 0) {
@@ -36,58 +45,51 @@ function contactsText(list: MailContact[]): string {
 }
 
 function quoteText(message: MailMessageDetail): string {
-  return `\n\n---- 原始邮件 ----\n发件人：${contactsText(message.from)}\n主题：${message.subject}\n\n${message.contentText}`;
+  return `\n\n---- 原始邮件 ----\n发件人：${contactsText(
+    message.from,
+  )}\n主题：${message.subject}\n\n${message.contentText}`;
+}
+
+function formatSize(value?: number): string {
+  const size = Number(value || 0);
+  if (size <= 0) return '';
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
 export function CampusMailDetailScreen({route, navigation}: Props) {
-  const {
-    id,
-    title,
-    fid = 1,
-    fromName = '',
-    date = '',
-    brief = '',
-  } = route.params;
-  const webRef = useRef<WebView>(null);
-  const [message, setMessage] = useState<MailMessageDetail | null>(null);
+  const {id, title, folderName = 'INBOX'} = route.params;
+  const [message, setMessage] = useState<DetailWithInline | null>(null);
+  const [folders, setFolders] = useState<MailFolderBinding[]>([]);
   const [loading, setLoading] = useState(true);
+  const [htmlHeight, setHtmlHeight] = useState(260);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    webRef.current?.injectJavaScript(
-      mailDetailBridgeScript(id, fid, {
-        title: title || '',
-        fromName,
-        date,
-        brief,
-      }),
-    );
-  }, [brief, date, fid, fromName, id, title]);
+    try {
+      const [detail, folderBindings] = await Promise.all([
+        readNativeMailMessage(folderName, id),
+        listNativeMailFolders().catch(() => []),
+      ]);
+      setMessage(detail);
+      setFolders(folderBindings);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '邮件详情加载失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [folderName, id]);
 
   useEffect(() => {
     load().catch(() => undefined);
   }, [load]);
 
-  const handleBridgeMessage = useCallback(
-    (event: WebViewMessageEvent) => {
-      try {
-        const payload = JSON.parse(event.nativeEvent.data);
-        if (payload.type === 'mailDetail') {
-          setMessage(payload.message);
-          setError(null);
-          setLoading(false);
-          markMailRead([id], true).catch(() => undefined);
-        } else if (payload.type === 'mailError') {
-          setError(payload.message || '邮件详情加载失败');
-          setLoading(false);
-        }
-      } catch {
-        // Ignore non-bridge messages.
-      }
-    },
-    [id],
+  const html = useMemo(
+    () => (message ? htmlForMessage(message) : ''),
+    [message],
   );
 
   const confirmDelete = () => {
@@ -97,23 +99,35 @@ export function CampusMailDetailScreen({route, navigation}: Props) {
         text: '删除',
         style: 'destructive',
         onPress: () => {
-          deleteMailMessages([id])
+          deleteNativeMailMessage(folderName, id)
             .then(() => navigation.goBack())
-            .catch(e => Alert.alert('删除失败', e instanceof Error ? e.message : '删除失败'));
+            .catch(e =>
+              Alert.alert(
+                '删除失败',
+                e instanceof Error ? e.message : '删除失败',
+              ),
+            );
         },
       },
     ]);
   };
 
   const move = () => {
-    const buttons = MAIL_FOLDERS.map(folder => ({
-      text: folder.name,
-      onPress: () => {
-        moveMailMessages([id], folder.id)
-          .then(() => navigation.goBack())
-          .catch(e => Alert.alert('移动失败', e instanceof Error ? e.message : '移动失败'));
-      },
-    }));
+    const buttons = folders
+      .filter(folder => folder.folderName !== folderName)
+      .map(folder => ({
+        text: folder.name,
+        onPress: () => {
+          moveNativeMailMessage(folderName, id, folder.folderName)
+            .then(() => navigation.goBack())
+            .catch(e =>
+              Alert.alert(
+                '移动失败',
+                e instanceof Error ? e.message : '移动失败',
+              ),
+            );
+        },
+      }));
     Alert.alert('移动邮件', '选择目标文件夹', [
       ...buttons,
       {text: '取消', style: 'cancel'},
@@ -121,44 +135,46 @@ export function CampusMailDetailScreen({route, navigation}: Props) {
   };
 
   const reply = () => {
-    if (!message) {
-      return;
-    }
+    if (!message) return;
     navigation.navigate('CampusMailCompose', {
       mode: 'reply',
       to: message.from.map(item => item.address).join(', '),
-      subject: message.subject.startsWith('Re:') ? message.subject : `Re: ${message.subject}`,
+      subject: message.subject.startsWith('Re:')
+        ? message.subject
+        : `Re: ${message.subject}`,
       content: quoteText(message),
     });
   };
 
   const forward = () => {
-    if (!message) {
-      return;
-    }
+    if (!message) return;
     navigation.navigate('CampusMailCompose', {
       mode: 'forward',
-      subject: message.subject.startsWith('Fwd:') ? message.subject : `Fwd: ${message.subject}`,
+      subject: message.subject.startsWith('Fwd:')
+        ? message.subject
+        : `Fwd: ${message.subject}`,
       content: quoteText(message),
     });
   };
 
+  const downloadAttachment = async (partId?: string, name?: string) => {
+    if (!partId) return;
+    try {
+      const result = await downloadNativeMailAttachment(folderName, id, partId);
+      Alert.alert('附件已保存', `${name || result.name}\n${result.path}`, [
+        {text: '好'},
+        {
+          text: '尝试打开',
+          onPress: () => Linking.openURL(result.uri).catch(() => undefined),
+        },
+      ]);
+    } catch (e) {
+      Alert.alert('附件下载失败', e instanceof Error ? e.message : '下载失败');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <WebView
-        ref={webRef}
-        source={{uri: MAIL_PORTAL_URL}}
-        pointerEvents="none"
-        containerStyle={styles.bridgeWebViewContainer}
-        sharedCookiesEnabled
-        thirdPartyCookiesEnabled
-        javaScriptEnabled
-        domStorageEnabled
-        originWhitelist={['*']}
-        onLoadEnd={() => load().catch(() => undefined)}
-        onMessage={handleBridgeMessage}
-        style={styles.bridgeWebView}
-      />
       <DetailHeader
         title={title || '邮件详情'}
         onBack={() => navigation.goBack()}
@@ -175,13 +191,6 @@ export function CampusMailDetailScreen({route, navigation}: Props) {
           <Text style={styles.errorTitle}>邮件详情加载失败</Text>
           <Text style={styles.errorText}>{error}</Text>
           <PrimaryButton label="重试" onPress={load} variant="ghost" />
-          <PrimaryButton
-            label="打开官方邮箱页"
-            onPress={() =>
-              navigation.navigate('CampusMailViewer', {view: 'inbox', title: '官方邮箱'})
-            }
-            variant="ghost"
-          />
         </View>
       ) : message ? (
         <ScrollView contentContainerStyle={styles.content}>
@@ -189,8 +198,15 @@ export function CampusMailDetailScreen({route, navigation}: Props) {
           <View style={styles.metaCard}>
             <MetaRow label="发件人" value={contactsText(message.from)} />
             <MetaRow label="收件人" value={contactsText(message.to)} />
-            {message.cc.length ? <MetaRow label="抄送" value={contactsText(message.cc)} /> : null}
-            <MetaRow label="时间" value={message.date || '—'} />
+            {message.cc.length ? (
+              <MetaRow label="抄送" value={contactsText(message.cc)} />
+            ) : null}
+            <MetaRow
+              label="时间"
+              value={
+                message.date ? new Date(message.date).toLocaleString() : '—'
+              }
+            />
           </View>
 
           <View style={styles.actionRow}>
@@ -202,13 +218,17 @@ export function CampusMailDetailScreen({route, navigation}: Props) {
             </Pressable>
             <Pressable
               style={styles.actionButton}
-              onPress={() => markMailRead([id], false).catch(() => undefined)}>
+              onPress={() =>
+                markNativeMailRead(folderName, id, false).catch(() => undefined)
+              }>
               <Text style={styles.actionText}>标未读</Text>
             </Pressable>
             <Pressable style={styles.actionButton} onPress={move}>
               <Text style={styles.actionText}>移动</Text>
             </Pressable>
-            <Pressable style={[styles.actionButton, styles.deleteButton]} onPress={confirmDelete}>
+            <Pressable
+              style={[styles.actionButton, styles.deleteButton]}
+              onPress={confirmDelete}>
               <Text style={[styles.actionText, styles.deleteText]}>删除</Text>
             </Pressable>
           </View>
@@ -220,24 +240,54 @@ export function CampusMailDetailScreen({route, navigation}: Props) {
                 <Pressable
                   key={`${item.name}-${index}`}
                   style={styles.attachRow}
-                  onPress={() => {
-                    if (item.downloadUrl) {
-                      Linking.openURL(item.downloadUrl).catch(() => undefined);
-                    } else {
-                      Alert.alert('附件下载', '这个附件需要在官方邮箱页中下载。');
-                    }
-                  }}>
-                  <Text style={styles.attachName} numberOfLines={1}>
-                    {item.name}
-                  </Text>
-                  <Text style={styles.attachAction}>查看</Text>
+                  onPress={() => downloadAttachment(item.id, item.name)}>
+                  <View style={styles.attachTextWrap}>
+                    <Text style={styles.attachName} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                    {item.size ? (
+                      <Text style={styles.attachMeta}>
+                        {formatSize(item.size)}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Text style={styles.attachAction}>下载</Text>
                 </Pressable>
               ))}
             </View>
           ) : null}
 
           <View style={styles.bodyCard}>
-            <Text style={styles.bodyText}>{message.contentText || '（无正文）'}</Text>
+            {message.contentHtml ? (
+              <WebView
+                originWhitelist={['*']}
+                source={{html}}
+                javaScriptEnabled
+                domStorageEnabled={false}
+                setSupportMultipleWindows={false}
+                onMessage={event => {
+                  const height = Number(event.nativeEvent.data);
+                  if (Number.isFinite(height) && height > 80) {
+                    setHtmlHeight(Math.min(6000, height + 24));
+                  }
+                }}
+                onShouldStartLoadWithRequest={request => {
+                  if (
+                    request.navigationType === 'click' &&
+                    /^https?:/i.test(request.url)
+                  ) {
+                    Linking.openURL(request.url).catch(() => undefined);
+                    return false;
+                  }
+                  return true;
+                }}
+                style={[styles.htmlView, {height: htmlHeight}]}
+              />
+            ) : (
+              <Text style={styles.bodyText}>
+                {message.contentText || '（无正文）'}
+              </Text>
+            )}
           </View>
         </ScrollView>
       ) : null}
@@ -245,239 +295,53 @@ export function CampusMailDetailScreen({route, navigation}: Props) {
   );
 }
 
-function mailDetailBridgeScript(
-  id: string,
-  fid: number,
-  fallback: {title: string; fromName: string; date: string; brief: string},
-): string {
-  return `
-    (function () {
-      var targetMid = ${JSON.stringify(id)};
-      var targetFid = ${JSON.stringify(fid)};
-      var fallbackTitle = ${JSON.stringify(fallback.title)};
-      var fallbackFromName = ${JSON.stringify(fallback.fromName)};
-      var fallbackDate = ${JSON.stringify(fallback.date)};
-      var fallbackBrief = ${JSON.stringify(fallback.brief)};
-      function post(data) {
-        window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify(data));
-      }
-      function normalize(text) {
-        return String(text || '').replace(/\\s+/g, ' ').trim();
-      }
-      function stripHtml(html) {
-        var div = document.createElement('div');
-        div.innerHTML = String(html || '');
-        return normalize(div.innerText || div.textContent || '');
-      }
-      function fallbackContact() {
-        return fallbackFromName ? [{name: fallbackFromName, address: ''}] : [];
-      }
-      function contacts(value) {
-        var list = Array.isArray(value) ? value : value ? [value] : [];
-        return list.map(function (item) {
-          if (typeof item === 'string') {
-            var match = item.match(/(.*)<(.+?)>/);
-            return {name: normalize(match ? match[1].replace(/["']/g, '') : ''), address: normalize(match ? match[2] : item)};
-          }
-          item = item || {};
-          return {name: normalize(item.name || item.personal || item.trueName || ''), address: normalize(item.email || item.address || item.addr || '')};
-        }).filter(function (item) { return item.name || item.address; });
-      }
-      function documents() {
-        var docs = [document];
-        var frames = Array.prototype.slice.call(document.querySelectorAll('iframe'));
-        frames.forEach(function (frame) {
-          try {
-            if (frame.contentDocument && frame.contentDocument.body) {
-              docs.push(frame.contentDocument);
-            }
-          } catch (e) {}
-        });
-        return docs;
-      }
-      function visibleText(el) {
-        if (!el) return '';
-        return normalize(el.innerText || el.textContent || '');
-      }
-      function isUsefulBody(text) {
-        if (!text) return false;
-        if (text === '锁屏' || text === fallbackTitle) return false;
-        if (/^(回复|转发|标未读|移动|删除|发件人|收件人|时间)$/.test(text)) return false;
-        return text.length >= 6;
-      }
-      function bestContentFromDom() {
-        var docs = documents();
-        var best = {html: '', text: ''};
+function htmlForMessage(message: DetailWithInline): string {
+  let body = sanitizeMailHtml(
+    message.contentHtml ||
+      escapeHtml(message.contentText).replace(/\n/g, '<br>'),
+  );
+  for (const [cid, dataUri] of Object.entries(message.inlineImages ?? {})) {
+    const escaped = cid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    body = body.replace(new RegExp(`cid:${escaped}`, 'gi'), dataUri);
+  }
+  return `<!doctype html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { margin: 0; padding: 0; color: #111; font-size: 16px; line-height: 1.55; word-wrap: break-word; overflow-wrap: anywhere; }
+    img { max-width: 100%; height: auto; }
+    a { color: #6f55e8; }
+    table { max-width: 100%; }
+  </style>
+</head>
+<body>${body}<script>
+  function sendHeight() {
+    window.ReactNativeWebView && window.ReactNativeWebView.postMessage(String(document.documentElement.scrollHeight || document.body.scrollHeight || 240));
+  }
+  setTimeout(sendHeight, 80);
+  setTimeout(sendHeight, 500);
+  window.onload = sendHeight;
+</script></body>
+</html>`;
+}
 
-        for (var i = 1; i < docs.length; i += 1) {
-          var body = docs[i].body;
-          var frameText = visibleText(body);
-          if (isUsefulBody(frameText) && frameText.length > best.text.length) {
-            best = {html: body.innerHTML || '', text: frameText};
-          }
-        }
+function sanitizeMailHtml(value: string): string {
+  return value
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
+    .replace(/<object[\s\S]*?<\/object>/gi, '')
+    .replace(/<embed[\s\S]*?>/gi, '')
+    .replace(/\son\w+\s*=\s*(['"]).*?\1/gi, '')
+    .replace(/\s(href|src)\s*=\s*(['"])\s*javascript:[\s\S]*?\2/gi, ' $1="#"');
+}
 
-        var selectors = [
-          '.j-mail-content',
-          '.j-mail-body',
-          '.mailContent',
-          '.mail-content',
-          '.mail-body',
-          '.mailBody',
-          '.readmail_content',
-          '.content-body',
-          '#mailContent',
-          '#messageBody',
-          '[class*="mail"][class*="content"]',
-          '[class*="mail"][class*="body"]'
-        ];
-        docs.forEach(function (doc) {
-          selectors.forEach(function (selector) {
-            Array.prototype.slice.call(doc.querySelectorAll(selector)).forEach(function (el) {
-              var text = visibleText(el);
-              if (isUsefulBody(text) && text.length > best.text.length) {
-                best = {html: el.innerHTML || '', text: text};
-              }
-            });
-          });
-        });
-        return best;
-      }
-      function textAfterLabel(label) {
-        var bodyText = document.body ? document.body.innerText || '' : '';
-        var lines = bodyText.split(/\\n+/).map(normalize).filter(Boolean);
-        for (var i = 0; i < lines.length; i += 1) {
-          if (lines[i] === label && lines[i + 1]) return lines[i + 1];
-          if (lines[i].indexOf(label) === 0) return normalize(lines[i].slice(label.length).replace(/^[:：]/, ''));
-        }
-        return '';
-      }
-      function scrapeDom() {
-        var content = bestContentFromDom();
-        var fromText = textAfterLabel('发件人');
-        var toText = textAfterLabel('收件人');
-        var ccText = textAfterLabel('抄送');
-        var dateText = textAfterLabel('时间') || (document.body && ((document.body.innerText || '').match(/\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}/) || [''])[0]) || fallbackDate;
-        return {
-          id: targetMid,
-          fid: targetFid,
-          from: contacts(fromText).concat(!fromText ? fallbackContact() : []),
-          to: contacts(toText),
-          cc: contacts(ccText),
-          subject: normalize(fallbackTitle) || '(无主题)',
-          date: normalize(dateText),
-          unread: false,
-          flagged: false,
-          hasAttachment: false,
-          brief: content.text ? content.text.slice(0, 160) : fallbackBrief,
-          contentHtml: content.html || '',
-          contentText: content.text || fallbackBrief,
-          attachments: []
-        };
-      }
-      function sid() {
-        var match = location.href.match(/[?&]sid=([^&#]+)/);
-        return match ? decodeURIComponent(match[1]) : '';
-      }
-      function xhrForm(func, body, callback) {
-        var xhr = new XMLHttpRequest();
-        xhr.open('POST', location.origin + '/coremail/s?sid=' + encodeURIComponent(sid()) + '&func=' + encodeURIComponent(func));
-        xhr.withCredentials = true;
-        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
-        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-        xhr.onreadystatechange = function () {
-          if (xhr.readyState === 4) {
-            if (xhr.status >= 200 && xhr.status < 300) {
-              callback(null, xhr.responseText || '');
-            } else {
-              callback(new Error('HTTP ' + xhr.status));
-            }
-          }
-        };
-        xhr.onerror = function () { callback(new Error('网络请求失败')); };
-        xhr.send(Object.keys(body).map(function (key) {
-          return encodeURIComponent(key) + '=' + encodeURIComponent(body[key]);
-        }).join('&'));
-      }
-      function payloadOf(parsed) {
-        return parsed && (parsed.var || parsed.object || parsed.data || parsed);
-      }
-      function buildMessage(parsed) {
-        var payload = payloadOf(parsed) || {};
-        var mail = payload.mail || payload.message || payload;
-        var info = payload.mailInfo || payload.info || {};
-        var html = mail.content || mail.html || mail.text || '';
-        var text = stripHtml(html);
-        return {
-          id: targetMid,
-          fid: targetFid,
-          from: contacts(mail.from || info.from || mail.sender || info.sender).concat(!(mail.from || info.from || mail.sender || info.sender) ? fallbackContact() : []),
-          to: contacts(mail.to || info.to),
-          cc: contacts(mail.cc || info.cc),
-          subject: normalize(fallbackTitle || mail.subject || info.subject) || '(无主题)',
-          date: normalize(mail.date || mail.sentDate || mail.receivedDate || info.date || fallbackDate),
-          unread: false,
-          flagged: false,
-          hasAttachment: !!(mail.attachments || info.attachments),
-          brief: text ? text.slice(0, 160) : fallbackBrief,
-          contentHtml: String(html || ''),
-          contentText: text || fallbackBrief,
-          attachments: []
-        };
-      }
-      function readRpc() {
-        var body = {mid: targetMid, mboxa: ''};
-        xhrForm('!readMessage', body, function (err, text) {
-          if (err) {
-            xhrForm('readMessage', body, finish);
-          } else {
-            finish(null, text);
-          }
-        });
-      }
-      function finish(err, text) {
-        if (!err) {
-          try {
-            var parsed = JSON.parse(text);
-            if (!parsed.code || !/^FA_/.test(parsed.code)) {
-              post({type: 'mailDetail', message: buildMessage(parsed)});
-              return;
-            }
-          } catch (e) {}
-        }
-        post({type: 'mailDetail', message: scrapeDom()});
-      }
-      function waitDomThenRead() {
-        var tries = 0;
-        var timer = setInterval(function () {
-          tries += 1;
-          var message = scrapeDom();
-          if ((message.contentText && message.contentText !== fallbackBrief) || tries >= 30) {
-            clearInterval(timer);
-            if (message.contentText && message.contentText !== fallbackBrief) {
-              post({type: 'mailDetail', message: message});
-            } else {
-              readRpc();
-            }
-          }
-        }, 500);
-      }
-      function openAndRead() {
-        if (!/\\/coremail\\//.test(location.href)) return;
-        var wanted = 'mail.read|' + encodeURIComponent(JSON.stringify({fid: targetFid, mid: targetMid, mboxa: ''}));
-        if (location.hash.slice(1) !== wanted) {
-          location.href = location.href.split('#')[0] + '#' + wanted;
-        }
-        setTimeout(waitDomThenRead, 900);
-      }
-      try {
-        setTimeout(openAndRead, 300);
-      } catch (e) {
-        post({type: 'mailError', message: e && e.message ? e.message : '邮件详情加载失败'});
-      }
-      return true;
-    })();
-  `;
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function MetaRow({label, value}: {label: string; value: string}) {
@@ -491,25 +355,12 @@ function MetaRow({label, value}: {label: string; value: string}) {
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  bridgeWebViewContainer: {
-    position: 'absolute',
-    flex: 0,
-    top: -2200,
-    left: -1200,
-    width: 390,
-    height: 900,
-    opacity: 0,
-    zIndex: -1,
-    elevation: -1,
-    overflow: 'hidden',
+  loading: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
   },
-  bridgeWebView: {
-    flex: 0,
-    width: 390,
-    height: 900,
-    opacity: 0,
-  },
-  loading: {flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm},
   loadingText: {...typography.caption, color: colors.textMuted},
   content: {padding: spacing.lg, paddingBottom: spacing.xxl},
   subject: {...typography.h2, color: colors.text, marginBottom: spacing.md},
@@ -530,7 +381,12 @@ const styles = StyleSheet.create({
   },
   metaLabel: {...typography.caption, color: colors.textMuted, width: 58},
   metaValue: {...typography.caption, color: colors.text, flex: 1},
-  actionRow: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md},
+  actionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
   actionButton: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -553,7 +409,9 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {...typography.label, color: colors.textSecondary},
   attachRow: {flexDirection: 'row', alignItems: 'center', gap: spacing.md},
-  attachName: {...typography.caption, color: colors.text, flex: 1},
+  attachTextWrap: {flex: 1},
+  attachName: {...typography.caption, color: colors.text},
+  attachMeta: {...typography.micro, color: colors.textMuted, marginTop: 2},
   attachAction: {...typography.caption, color: colors.primary},
   bodyCard: {
     backgroundColor: colors.surface,
@@ -561,7 +419,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderSubtle,
     padding: spacing.md,
+    overflow: 'hidden',
   },
+  htmlView: {backgroundColor: colors.surface},
   bodyText: {...typography.body, color: colors.text, lineHeight: 24},
   errorBox: {margin: spacing.lg, padding: spacing.lg, gap: spacing.md},
   errorTitle: {...typography.h3, color: colors.error},

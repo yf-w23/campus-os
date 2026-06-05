@@ -1,10 +1,12 @@
-import React, {useCallback, useEffect, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -12,18 +14,20 @@ import {
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
-import {WebView, WebViewMessageEvent} from 'react-native-webview';
 import {colors, radii, spacing, typography} from '../../app/theme';
 import {DetailHeader} from '../common/components/Ui';
 import {PrimaryButton} from '../common/components/Buttons';
 import {RootStackParamList} from '../../app/navigation/types';
 import {uiImages} from '../../app/assets/uiImages';
+import {MailMessageSummary} from '../../services/campus/mail';
 import {
-  MAIL_FOLDERS,
-  MailFolder,
-  MailMessageSummary,
-} from '../../services/campus/mail';
-import {MAIL_PORTAL_URL} from '../../services/campus/campusEndpoints';
+  clearNativeMailConfig,
+  getNativeMailStatus,
+  listNativeMailFolders,
+  listNativeMailMessages,
+  MailFolderBinding,
+  saveNativeMailConfig,
+} from '../../services/campus/nativeMail';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CampusMail'>;
 
@@ -35,10 +39,7 @@ function contactLine(message: MailMessageSummary): string {
 
 function formatMailDate(value: string): string {
   const normalized = String(value || '').trim();
-  if (!normalized) {
-    return '';
-  }
-
+  if (!normalized) return '';
   const visibleMonthDay = /^(\d{1,2})-(\d{1,2})$/.exec(normalized);
   if (visibleMonthDay) {
     return `${visibleMonthDay[1].padStart(
@@ -46,28 +47,8 @@ function formatMailDate(value: string): string {
       '0',
     )}-${visibleMonthDay[2].padStart(2, '0')}`;
   }
-
-  const chineseDate =
-    /(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日(?:.*?(\d{1,2}):(\d{2}))?/.exec(
-      normalized,
-    );
-  const slashDate =
-    /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?/.exec(
-      normalized,
-    );
-  const parts = chineseDate || slashDate;
-  const d = parts
-    ? new Date(
-        Number(parts[1]),
-        Number(parts[2]) - 1,
-        Number(parts[3]),
-        Number(parts[4] ?? 0),
-        Number(parts[5] ?? 0),
-      )
-    : new Date(normalized);
-  if (Number.isNaN(d.getTime())) {
-    return normalized.slice(0, 16);
-  }
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return normalized.slice(0, 16);
   const now = new Date();
   const sameDay =
     d.getFullYear() === now.getFullYear() &&
@@ -75,73 +56,115 @@ function formatMailDate(value: string): string {
     d.getDate() === now.getDate();
   const hh = String(d.getHours()).padStart(2, '0');
   const mm = String(d.getMinutes()).padStart(2, '0');
-  if (sameDay) {
-    return `${hh}:${mm}`;
-  }
+  if (sameDay) return `${hh}:${mm}`;
   return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(
     d.getDate(),
   ).padStart(2, '0')}`;
 }
 
 export function CampusMailScreen({navigation}: Props) {
-  const webRef = useRef<WebView>(null);
-  const hasLoadedOnce = useRef(false);
-  const [folder, setFolder] = useState<MailFolder>(MAIL_FOLDERS[0]);
+  const [configured, setConfigured] = useState<boolean | null>(null);
+  const [configuredUser, setConfiguredUser] = useState('');
+  const [setupUser, setSetupUser] = useState('');
+  const [setupPassword, setSetupPassword] = useState('');
+  const [setupLoading, setSetupLoading] = useState(false);
+  const [folders, setFolders] = useState<MailFolderBinding[]>([]);
+  const [folder, setFolder] = useState<MailFolderBinding | null>(null);
   const [messages, setMessages] = useState<MailMessageSummary[]>([]);
   const [query, setQuery] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
 
+  const loadStatus = useCallback(async () => {
+    const status = await getNativeMailStatus();
+    setConfigured(status.configured);
+    setConfiguredUser(status.username ?? '');
+    if (status.configured) {
+      const bindings = await listNativeMailFolders();
+      setFolders(bindings);
+      setFolder(prev => prev ?? bindings[0] ?? null);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadStatus().catch(e => {
+      setConfigured(false);
+      setError(e instanceof Error ? e.message : '邮箱状态读取失败');
+    });
+  }, [loadStatus]);
+
   const load = useCallback(
     async (refresh = false) => {
-      if (refresh) {
-        setRefreshing(true);
-      } else if (!hasLoadedOnce.current) {
-        setLoading(true);
-      }
+      if (!folder) return;
+      if (refresh) setRefreshing(true);
+      else setLoading(true);
       setError(null);
-      webRef.current?.injectJavaScript(
-        mailListBridgeScript(folder.id, query.trim()),
-      );
+      try {
+        const result = await listNativeMailMessages(folder, query, 60);
+        setMessages(result.messages);
+        setTotal(result.total);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : '邮件加载失败');
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
     },
-    [folder.id, query],
+    [folder, query],
   );
 
   useEffect(() => {
-    load().catch(() => undefined);
-  }, [load]);
+    if (configured && folder) {
+      load().catch(() => undefined);
+    }
+  }, [configured, folder, load]);
 
-  const handleBridgeMessage = useCallback(
-    (event: WebViewMessageEvent) => {
-      try {
-        const payload = JSON.parse(event.nativeEvent.data);
-        if (payload.type === 'mailList') {
-          hasLoadedOnce.current = true;
-          setMessages(payload.messages ?? []);
-          setTotal(Number(payload.total ?? payload.messages?.length ?? 0));
-          setError(null);
-          setLoading(false);
-          setRefreshing(false);
-        } else if (payload.type === 'mailError') {
-          hasLoadedOnce.current = true;
-          setError(payload.message || '邮箱加载失败');
-          setLoading(false);
-          setRefreshing(false);
-        }
-      } catch {
-        // Ignore non-bridge messages.
-      }
-    },
-    [load],
-  );
+  const saveSetup = async () => {
+    setSetupLoading(true);
+    try {
+      await saveNativeMailConfig({
+        username: setupUser.trim(),
+        password: setupPassword,
+      });
+      setSetupPassword('');
+      await loadStatus();
+    } catch (e) {
+      Alert.alert('邮箱配置失败', e instanceof Error ? e.message : '配置失败');
+    } finally {
+      setSetupLoading(false);
+    }
+  };
+
+  const resetConfig = () => {
+    Alert.alert('重设邮箱', '将清除本机保存的邮箱客户端专用密码。', [
+      {text: '取消', style: 'cancel'},
+      {
+        text: '清除',
+        style: 'destructive',
+        onPress: () => {
+          clearNativeMailConfig()
+            .then(() => {
+              setConfigured(false);
+              setFolders([]);
+              setFolder(null);
+              setMessages([]);
+              setTotal(0);
+            })
+            .catch(() => undefined);
+        },
+      },
+    ]);
+  };
 
   const openMessage = (item: MailMessageSummary) => {
+    if (!folder) return;
     navigation.navigate('CampusMailDetail', {
       id: item.id,
       title: item.subject,
       fid: item.fid,
+      folderName: folder.folderName,
       fromName: contactLine(item),
       date: item.date,
       brief: item.brief,
@@ -177,22 +200,65 @@ export function CampusMailScreen({navigation}: Props) {
     </Pressable>
   );
 
+  if (configured === null) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <DetailHeader title="清华邮箱" onBack={() => navigation.goBack()} />
+        <View style={styles.loading}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={styles.loadingText}>检查邮箱配置…</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!configured) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <DetailHeader title="清华邮箱" onBack={() => navigation.goBack()} />
+        <ScrollView contentContainerStyle={styles.setupContent}>
+          <View style={styles.headerCard}>
+            <Image source={uiImages.campusMail} style={styles.icon} />
+            <View style={styles.headerText}>
+              <Text style={styles.headerTitle}>原生 IMAP 邮箱</Text>
+              <Text style={styles.headerSub}>
+                使用清华官方 IMAP/SMTP 协议读取邮件、HTML 正文、链接与附件。
+              </Text>
+            </View>
+          </View>
+          <View style={styles.notice}>
+            <Text style={styles.noticeTitle}>需要客户端专用密码</Text>
+            <Text style={styles.noticeText}>
+              请在清华邮箱网页版进入 设置 → 安全设置 →
+              客户端专用密码，生成后填入这里。不要填写信息门户密码。
+            </Text>
+          </View>
+          <Field
+            label="邮箱账号"
+            value={setupUser}
+            onChangeText={setSetupUser}
+            placeholder="yourname@mails.tsinghua.edu.cn"
+          />
+          <Field
+            label="客户端专用密码"
+            value={setupPassword}
+            onChangeText={setSetupPassword}
+            placeholder="从 Coremail 安全设置生成"
+            secureTextEntry
+          />
+          <PrimaryButton
+            label={setupLoading ? '验证中…' : '保存并连接'}
+            onPress={saveSetup}
+            loading={setupLoading}
+            disabled={setupLoading}
+          />
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <WebView
-        ref={webRef}
-        source={{uri: MAIL_PORTAL_URL}}
-        pointerEvents="none"
-        containerStyle={styles.bridgeWebViewContainer}
-        sharedCookiesEnabled
-        thirdPartyCookiesEnabled
-        javaScriptEnabled
-        domStorageEnabled
-        originWhitelist={['*']}
-        onLoadEnd={() => load().catch(() => undefined)}
-        onMessage={handleBridgeMessage}
-        style={styles.bridgeWebView}
-      />
       <DetailHeader
         title="清华邮箱"
         onBack={() => navigation.goBack()}
@@ -207,16 +273,24 @@ export function CampusMailScreen({navigation}: Props) {
           <Text style={styles.headerSub}>
             {query.trim()
               ? `搜索结果 · ${messages.length}`
-              : `${folder.name} · ${total || messages.length}`}
+              : `${folder?.name ?? '邮箱'} · ${total || messages.length}`}
           </Text>
+          {configuredUser ? (
+            <Text style={styles.accountText} numberOfLines={1}>
+              {configuredUser}
+            </Text>
+          ) : null}
         </View>
+        <Pressable style={styles.resetButton} onPress={resetConfig}>
+          <Text style={styles.resetText}>重设</Text>
+        </Pressable>
       </View>
 
       <View style={styles.searchRow}>
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="搜索邮件全文"
+          placeholder="搜索当前已加载邮件"
           placeholderTextColor={colors.textMuted}
           returnKeyType="search"
           onSubmitEditing={() => load().catch(() => undefined)}
@@ -230,12 +304,12 @@ export function CampusMailScreen({navigation}: Props) {
       </View>
 
       <View style={styles.folderRow}>
-        {MAIL_FOLDERS.map(item => (
+        {folders.map(item => (
           <Pressable
             key={item.id}
             style={[
               styles.folderChip,
-              folder.id === item.id && !query.trim() && styles.folderChipActive,
+              folder?.id === item.id && styles.folderChipActive,
             ]}
             onPress={() => {
               setQuery('');
@@ -244,9 +318,7 @@ export function CampusMailScreen({navigation}: Props) {
             <Text
               style={[
                 styles.folderText,
-                folder.id === item.id &&
-                  !query.trim() &&
-                  styles.folderTextActive,
+                folder?.id === item.id && styles.folderTextActive,
               ]}>
               {item.name}
             </Text>
@@ -294,92 +366,41 @@ export function CampusMailScreen({navigation}: Props) {
   );
 }
 
-function mailListBridgeScript(fid: number, query: string): string {
-  return `
-    (function () {
-      var targetFid = ${JSON.stringify(fid)};
-      var queryText = ${JSON.stringify(query)}.toLowerCase();
-      function post(data) {
-        window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify(data));
-      }
-      function normalize(text) {
-        return String(text || '').replace(/\\s+/g, ' ').trim();
-      }
-      function scrapeRows() {
-        var rows = Array.prototype.slice.call(document.querySelectorAll('tr.j-mail[mid]'));
-        var messages = rows.map(function (row) {
-          var from = row.querySelector('.j-fromto');
-          var subject = row.querySelector('.subject');
-          var summary = row.querySelector('.summary');
-          var time = row.querySelector('.time span, .time');
-          var attachmentIcon = row.querySelector('.attach i:not(.f-vh)');
-          return {
-            id: row.getAttribute('mid') || '',
-            fid: targetFid,
-            from: [{name: normalize(from && from.textContent), address: (from && from.getAttribute('data-email')) || ''}],
-            to: [],
-            subject: normalize(subject && subject.textContent) || '(无主题)',
-            date: normalize((time && (time.textContent || time.getAttribute('title'))) || ''),
-            unread: !row.classList.contains('read'),
-            flagged: false,
-            hasAttachment: !!attachmentIcon,
-            brief: normalize(summary && summary.textContent)
-          };
-        }).filter(function (item) {
-          if (!item.id) return false;
-          if (!queryText) return true;
-          return (item.subject + ' ' + item.brief + ' ' + item.from.map(function (x) { return x.name + ' ' + x.address; }).join(' ')).toLowerCase().indexOf(queryText) >= 0;
-        });
-        var bodyText = normalize(document.body && document.body.innerText);
-        var totalMatch = bodyText.match(/共\\s*(\\d+)\\s*封/) || bodyText.match(/邮件封数:\\s*(\\d+)\\s*封/);
-        post({type: 'mailList', fid: targetFid, total: totalMatch ? Number(totalMatch[1]) : messages.length, messages: messages});
-      }
-      function ensureListPage() {
-        if (!/\\/coremail\\//.test(location.href)) {
-          return;
-        }
-        var wanted = 'mail.list|' + encodeURIComponent(JSON.stringify({fid: targetFid}));
-        if (location.hash.slice(1) !== wanted) {
-          location.href = location.href.split('#')[0] + '#' + wanted;
-        }
-        var tries = 0;
-        var timer = setInterval(function () {
-          tries += 1;
-          if (document.querySelectorAll('tr.j-mail[mid]').length > 0 || tries > 25) {
-            clearInterval(timer);
-            scrapeRows();
-          }
-        }, 400);
-      }
-      try {
-        setTimeout(ensureListPage, 300);
-      } catch (e) {
-        post({type: 'mailError', message: e && e.message ? e.message : '邮箱页面读取失败'});
-      }
-      return true;
-    })();
-  `;
+function Field({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  secureTextEntry,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder: string;
+  secureTextEntry?: boolean;
+}) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={colors.textMuted}
+        autoCapitalize="none"
+        secureTextEntry={secureTextEntry}
+        style={styles.input}
+      />
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
-  bridgeWebViewContainer: {
-    position: 'absolute',
-    flex: 0,
-    top: -1200,
-    left: -1200,
-    width: 1,
-    height: 1,
-    opacity: 0,
-    zIndex: -1,
-    elevation: -1,
-    overflow: 'hidden',
-  },
-  bridgeWebView: {
-    flex: 0,
-    width: 1,
-    height: 1,
-    opacity: 0,
+  setupContent: {
+    padding: spacing.lg,
+    paddingBottom: spacing.xxl,
+    gap: spacing.md,
   },
   headerCard: {
     marginHorizontal: spacing.lg,
@@ -397,6 +418,37 @@ const styles = StyleSheet.create({
   headerText: {flex: 1, gap: 3},
   headerTitle: {...typography.h3, color: colors.text},
   headerSub: {...typography.caption, color: colors.textMuted},
+  accountText: {...typography.micro, color: colors.textMuted},
+  resetButton: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 7,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surfaceAlt,
+  },
+  resetText: {...typography.micro, color: colors.textSecondary},
+  notice: {
+    marginHorizontal: spacing.lg,
+    padding: spacing.md,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    gap: 4,
+  },
+  noticeTitle: {...typography.label, color: colors.text},
+  noticeText: {...typography.caption, color: colors.textSecondary},
+  field: {
+    marginHorizontal: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: 4,
+  },
+  label: {...typography.caption, color: colors.textMuted},
+  input: {...typography.body, color: colors.text, padding: 0, minHeight: 34},
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',

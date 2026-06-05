@@ -36,6 +36,7 @@ export type RootStackParamList = {
     id: string;
     title?: string;
     fid?: number;
+    folderName?: string;
     fromName?: string;
     date?: string;
     brief?: string;

@@ -1,4 +1,9 @@
-import {AIProviderConfig, AIProviderPreset, AgentContext, ChatMessage} from '../../domain/agent';
+import {
+  AIProviderConfig,
+  AIProviderPreset,
+  AgentContext,
+  ChatMessage,
+} from '../../domain/agent';
 import {
   ActionExecutionStatus,
   ActionPreview,
@@ -7,11 +12,7 @@ import {
 } from '../../domain/actions';
 import {LearningSnapshot} from '../../domain/learning';
 import {ManualDeadline} from '../../domain/deadline';
-import {
-  getToolByName,
-  toolSpecs,
-  type AgentTool,
-} from './tools';
+import {getToolByName, toolSpecs, type AgentTool} from './tools';
 
 export const AI_PRESETS: Record<
   AIProviderPreset,
@@ -58,7 +59,9 @@ function todayLocalISO(): string {
 }
 
 function weekdayCN(): string {
-  return ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][new Date().getDay()];
+  return ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][
+    new Date().getDay()
+  ];
 }
 
 /** 把课表日期字段归一为 YYYY-MM-DD，用于和今天比较 */
@@ -106,8 +109,11 @@ export function buildAgentContext(
 
   const manualUpcoming = (extra?.manualDeadlines ?? [])
     .slice(0, 8)
-    .map(item =>
-      `- [自建${item.courseName ? `/${item.courseName}` : ''}] ${item.title} · 截止 ${item.deadline}`,
+    .map(
+      item =>
+        `- [自建${item.courseName ? `/${item.courseName}` : ''}] ${
+          item.title
+        } · 截止 ${item.deadline}`,
     )
     .join('\n');
 
@@ -116,17 +122,25 @@ export function buildAgentContext(
     .slice(0, 8)
     .map(item => `- [${item.courseName}] ${item.title} · 截止 ${item.deadline}`)
     .join('\n');
-  const upcoming = [homeworkUpcoming, manualUpcoming].filter(Boolean).join('\n');
+  const upcoming = [homeworkUpcoming, manualUpcoming]
+    .filter(Boolean)
+    .join('\n');
 
   const todayClasses = snapshot.schedule
     .filter(item => normalizeDate(item.date) === today)
     .sort((a, b) => (a.startTime ?? '').localeCompare(b.startTime ?? ''))
-    .map(item => `- ${item.startTime}-${item.endTime} ${item.title} @ ${item.location}`)
+    .map(
+      item =>
+        `- ${item.startTime}-${item.endTime} ${item.title} @ ${item.location}`,
+    )
     .join('\n');
 
   const schedule = snapshot.schedule
     .slice(0, 14)
-    .map(item => `- ${item.date} ${item.startTime}-${item.endTime} ${item.title} @ ${item.location}`)
+    .map(
+      item =>
+        `- ${item.date} ${item.startTime}-${item.endTime} ${item.title} @ ${item.location}`,
+    )
     .join('\n');
 
   const courses = snapshot.courses
@@ -160,6 +174,7 @@ export function buildSystemPrompt(context: AgentContext): string {
     '- 用户问研读间时，先用 list_library_room_types / find_library_rooms 查可用资源；预约前必须有明确日期、开始/结束时间和 devId/kindId。',
     '- 用户问校园网余额/在线设备时使用 get_network_balance / list_network_devices；注销设备前只使用 key，工具会自行查 mac。',
     '- 用户问校园卡时只查询余额和流水，不要承诺充值、挂失或修改密码。',
+    '- 用户问邮件、收件箱、最近邮件、某封邮件内容或附件时，使用 list_mail_folders / search_mail_messages / read_mail_message 只读查询；不要发送、删除或移动邮件。',
     '- 用户问宿舍洗衣机状态、哪里有空闲洗衣机、某楼洗衣机剩余时间时，先用 list_laundry_buildings 找楼宇；有明确楼宇后用 get_laundry_status 获取真实状态。',
     '- 预约座位前若用户没指定地点，优先使用其常用图书馆（见下方记忆）；仍不确定时先询问。',
     '- 用户表达明确长期偏好（常去哪、默认充值多少、关注哪些课）时，用 remember_preference 记住。',
@@ -168,7 +183,9 @@ export function buildSystemPrompt(context: AgentContext): string {
     '- 【重要】展示工具返回的具体数据（座位号 seatName、成绩、电量、金额、日期等）时，必须逐字原样引用工具结果，严禁编造、改写、推测或用"范围/区间"概括座位号；项目较多时可只列前若干个真实值并注明"等"，但绝不能虚构编号。预约座位时必须使用工具返回的真实 seatId/seatType，不能凭座位号猜测。',
   ];
   if (context.demoMode) {
-    lines.push('- 当前为演示模式：实时查询与写操作不可用，请提示用户退出演示模式并登录。');
+    lines.push(
+      '- 当前为演示模式：实时查询与写操作不可用，请提示用户退出演示模式并登录。',
+    );
   }
   lines.push(
     '',
@@ -400,7 +417,9 @@ async function auditToolCall(input: {
   errorMessage?: string;
 }): Promise<void> {
   try {
-    const {appendActionAuditRecord} = await import('../../storage/actionAuditStorage');
+    const {appendActionAuditRecord} = await import(
+      '../../storage/actionAuditStorage'
+    );
     await appendActionAuditRecord({
       toolName: input.tool.name,
       toolTitle: input.tool.title,
@@ -471,7 +490,9 @@ export async function runAgent(
       } else {
         let args: Record<string, unknown> = {};
         try {
-          args = call.function.arguments ? JSON.parse(call.function.arguments) : {};
+          args = call.function.arguments
+            ? JSON.parse(call.function.arguments)
+            : {};
         } catch {
           args = {};
         }
@@ -516,7 +537,11 @@ export async function runAgent(
             if (!ok) {
               cancelled = true;
               status = 'cancelled';
-              result = {ok: false, cancelled: true, message: '用户取消了该操作'};
+              result = {
+                ok: false,
+                cancelled: true,
+                message: '用户取消了该操作',
+              };
               callbacks.onToolEnd?.(tool, 'cancelled', '已取消');
             }
           }
@@ -572,7 +597,10 @@ export async function runAgent(
   return fallback;
 }
 
-export function createMockAgentReply(question: string, context: AgentContext): string {
+export function createMockAgentReply(
+  question: string,
+  context: AgentContext,
+): string {
   return [
     `【演示模式】今天是 ${context.todayDate}。我已读取你的本地校园数据上下文：`,
     '',
