@@ -1,6 +1,11 @@
 export type RootTabParamList = {
   Home: undefined;
-  Learning: {initialTab?: 'homework'; openAddDeadline?: boolean} | undefined;
+  Learning:
+    | {
+        initialTab?: 'courses' | 'homework' | 'notifications' | 'files';
+        openAddDeadline?: boolean;
+      }
+    | undefined;
   Schedule: undefined;
   Campus: undefined;
   AI: {initialQuestion?: string} | undefined;
@@ -10,6 +15,7 @@ export type RootTabParamList = {
 export type RootStackParamList = {
   Login: undefined;
   Main: undefined;
+  WeatherDetail: undefined;
   CourseDetail: {id: string};
   HomeworkDetail: {id: string};
   NotificationDetail: {id: string};

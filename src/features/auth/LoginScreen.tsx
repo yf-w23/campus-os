@@ -370,7 +370,7 @@ export function LoginScreen() {
             {auth.error ? <Text style={styles.error}>{auth.error}</Text> : null}
 
             <Text style={styles.footerHint}>{t.auth.footerHint}</Text>
-            <Text style={styles.versionTag}>Campus OS v0.2.0</Text>
+            <Text style={styles.versionTag}>Campus OS v2.1.1</Text>
 
             {__DEV__ ? (
               <Pressable onPress={() => DevSettings.reload()} style={styles.devReload}>

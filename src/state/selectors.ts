@@ -19,11 +19,11 @@ export const selectCampusSchedule = (state: RootState) => ({
   scheduleError: state.schedule.scheduleError,
 });
 
-export const selectScheduleError = (state: RootState) => state.schedule.scheduleError;
+export const selectScheduleError = (state: RootState) =>
+  state.schedule.scheduleError;
 export const selectAI = (state: RootState) => state.ai;
 
-export const selectConversations = (state: RootState) =>
-  state.ai.conversations;
+export const selectConversations = (state: RootState) => state.ai.conversations;
 
 export const selectActiveConversationId = (state: RootState) =>
   state.ai.activeConversationId;
@@ -38,17 +38,34 @@ export const selectActiveMessages = (state: RootState) =>
 export const selectSettings = (state: RootState) => state.settings;
 
 export const selectUpcomingHomework = (state: RootState) =>
-  state.learning.snapshot?.homework.filter(item => !item.submitted) ?? [];
+  state.learning.snapshot?.homework.filter(
+    item => !item.submitted && isDeadlineVisible(item.deadline),
+  ) ?? [];
 
 function deadlineTime(value: string): number {
   const time = new Date(String(value ?? '').replace(' ', 'T')).getTime();
   return Number.isNaN(time) ? Number.MAX_SAFE_INTEGER : time;
 }
 
-export const selectUpcomingDeadlines = (state: RootState): DeadlineListItem[] => {
+const OVERDUE_DDL_VISIBLE_MS = 24 * 60 * 60 * 1000;
+
+export function isDeadlineVisible(
+  deadline: string | undefined,
+  nowMs = Date.now(),
+): boolean {
+  const time = deadlineTime(deadline ?? '');
+  if (time === Number.MAX_SAFE_INTEGER) {
+    return true;
+  }
+  return time >= nowMs - OVERDUE_DDL_VISIBLE_MS;
+}
+
+export const selectUpcomingDeadlines = (
+  state: RootState,
+): DeadlineListItem[] => {
   const homework: DeadlineListItem[] =
     state.learning.snapshot?.homework
-      .filter(item => !item.submitted)
+      .filter(item => !item.submitted && isDeadlineVisible(item.deadline))
       .map(item => ({
         kind: 'homework' as const,
         id: item.id,
@@ -58,16 +75,18 @@ export const selectUpcomingDeadlines = (state: RootState): DeadlineListItem[] =>
         status: item.status,
         submitted: item.submitted,
       })) ?? [];
-  const manual: DeadlineListItem[] = state.manualDeadlines.items.map(item => ({
-    kind: 'manual' as const,
-    id: item.id,
-    title: item.title,
-    courseName: item.courseName,
-    deadline: item.deadline,
-    note: item.note,
-    status: 'pending',
-    submitted: false,
-  }));
+  const manual: DeadlineListItem[] = state.manualDeadlines.items
+    .filter(item => isDeadlineVisible(item.deadline))
+    .map(item => ({
+      kind: 'manual' as const,
+      id: item.id,
+      title: item.title,
+      courseName: item.courseName,
+      deadline: item.deadline,
+      note: item.note,
+      status: 'pending',
+      submitted: false,
+    }));
   return [...homework, ...manual].sort(
     (a, b) => deadlineTime(a.deadline) - deadlineTime(b.deadline),
   );
@@ -101,9 +120,8 @@ export function scheduleForWeekDates(
 }
 
 /** 当前自然周内的课表（与首页同源，按日期归一化筛选） */
-export const selectWeekSchedule =
-  (weekDates: string[]) => (state: RootState) =>
-    scheduleForWeekDates(selectLearningSchedule(state), weekDates);
+export const selectWeekSchedule = (weekDates: string[]) => (state: RootState) =>
+  scheduleForWeekDates(selectLearningSchedule(state), weekDates);
 
 export const selectTodaySchedule = (state: RootState) => {
   const today = todayLocalISO();
@@ -113,15 +131,18 @@ export const selectTodaySchedule = (state: RootState) => {
 };
 
 export const selectUnreadNotifications = (state: RootState) =>
-  state.learning.snapshot?.notifications.filter(item => !item.hasRead && !item.expired) ??
-  [];
+  state.learning.snapshot?.notifications.filter(
+    item => !item.hasRead && !item.expired,
+  ) ?? [];
 
 export const selectIsDemoData = (state: RootState) =>
   state.learning.dataSource === 'demo';
 
 export const selectLearningError = (state: RootState) => state.learning.error;
-export const selectLearningLoading = (state: RootState) => state.learning.loading;
-export const selectLearningDataSource = (state: RootState) => state.learning.dataSource;
+export const selectLearningLoading = (state: RootState) =>
+  state.learning.loading;
+export const selectLearningDataSource = (state: RootState) =>
+  state.learning.dataSource;
 
 /** 某日合并后的课表 + 个人日程，按开始时间排序 */
 export function mergeScheduleForDate(
@@ -137,10 +158,8 @@ export function mergeScheduleForDate(
     .filter(p => normalizeDateString(p.date) === day)
     .map(event => ({kind: 'personal' as const, event}));
   return [...courseItems, ...personalItems].sort((a, b) => {
-    const ta =
-      a.kind === 'course' ? a.event.startTime : a.event.startTime;
-    const tb =
-      b.kind === 'course' ? b.event.startTime : b.event.startTime;
+    const ta = a.kind === 'course' ? a.event.startTime : a.event.startTime;
+    const tb = b.kind === 'course' ? b.event.startTime : b.event.startTime;
     return (ta ?? '').localeCompare(tb ?? '');
   });
 }

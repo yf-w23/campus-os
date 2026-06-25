@@ -17,7 +17,12 @@ import {useDispatch, useSelector} from 'react-redux';
 import {useTranslation} from '../../app/i18n';
 import {RootStackParamList, RootTabParamList} from '../../app/navigation/types';
 import {colors, radii, spacing, typography} from '../../app/theme';
-import {Badge, EmptyState, ListCard, ScreenHeader} from '../common/components/Ui';
+import {
+  Badge,
+  EmptyState,
+  ListCard,
+  ScreenHeader,
+} from '../common/components/Ui';
 import {selectLearning, selectUpcomingDeadlines} from '../../state/selectors';
 import {HomeworkStatus} from '../../domain/learning';
 import {stripHtml} from '../../utils/html';
@@ -33,7 +38,10 @@ type Props = CompositeScreenProps<
   NativeStackScreenProps<RootStackParamList>
 >;
 
-const statusTone: Record<HomeworkStatus, 'default' | 'success' | 'warning' | 'error'> = {
+const statusTone: Record<
+  HomeworkStatus,
+  'default' | 'success' | 'warning' | 'error'
+> = {
   pending: 'warning',
   submitted: 'default',
   graded: 'success',
@@ -54,7 +62,10 @@ function newDeadlineId(): string {
   return `md-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function template(value: string, vars: Record<string, string | number>): string {
+function template(
+  value: string,
+  vars: Record<string, string | number>,
+): string {
   return value.replace(/\{(\w+)\}/g, (_, key) => String(vars[key] ?? ''));
 }
 
@@ -74,14 +85,16 @@ export function LearningScreen({navigation, route}: Props) {
   const [tab, setTab] = useState<TabKey>('courses');
   const [modalOpen, setModalOpen] = useState(false);
   const [formTitle, setFormTitle] = useState('');
-  const [formDate, setFormDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [formDate, setFormDate] = useState(() =>
+    new Date().toISOString().slice(0, 10),
+  );
   const [formTime, setFormTime] = useState('23:59');
   const [formCourse, setFormCourse] = useState('');
   const [formNote, setFormNote] = useState('');
 
   useEffect(() => {
-    if (route.params?.initialTab === 'homework') {
-      setTab('homework');
+    if (route.params?.initialTab) {
+      setTab(route.params.initialTab);
     }
     if (route.params?.openAddDeadline) {
       setModalOpen(true);
@@ -177,10 +190,18 @@ export function LearningScreen({navigation, route}: Props) {
                 key={item.key}
                 style={[styles.segmentItem, active && styles.segmentItemActive]}
                 onPress={() => setTab(item.key)}>
-                <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+                <Text
+                  style={[
+                    styles.segmentText,
+                    active && styles.segmentTextActive,
+                  ]}>
                   {item.label}
                 </Text>
-                <Text style={[styles.segmentCount, active && styles.segmentCountActive]}>
+                <Text
+                  style={[
+                    styles.segmentCount,
+                    active && styles.segmentCountActive,
+                  ]}>
                   {counts[item.key]}
                 </Text>
               </Pressable>
@@ -194,14 +215,18 @@ export function LearningScreen({navigation, route}: Props) {
               <ListCard
                 key={course.id}
                 accent="primary"
-                onPress={() => navigation.navigate('CourseDetail', {id: course.id})}>
+                onPress={() =>
+                  navigation.navigate('CourseDetail', {id: course.id})
+                }>
                 <Text style={styles.cardTitle}>{course.name}</Text>
                 {course.teacherName ? (
                   <Text style={styles.cardMeta}>{course.teacherName}</Text>
                 ) : null}
                 {course.courseNumber ? (
                   <Text style={styles.cardMeta}>
-                    {template(t.learning.courseNumber, {number: course.courseNumber})}
+                    {template(t.learning.courseNumber, {
+                      number: course.courseNumber,
+                    })}
                   </Text>
                 ) : null}
               </ListCard>
@@ -251,7 +276,9 @@ export function LearningScreen({navigation, route}: Props) {
                 <ListCard
                   key={item.id}
                   accent={statusAccent[item.status]}
-                  onPress={() => navigation.navigate('HomeworkDetail', {id: item.id})}>
+                  onPress={() =>
+                    navigation.navigate('HomeworkDetail', {id: item.id})
+                  }>
                   <View style={styles.cardHeader}>
                     <Text style={styles.cardTitle} numberOfLines={2}>
                       {item.title}
@@ -261,10 +288,10 @@ export function LearningScreen({navigation, route}: Props) {
                         item.status === 'pending'
                           ? t.learning.pending
                           : item.status === 'submitted'
-                            ? t.learning.submitted
-                            : item.status === 'graded'
-                              ? t.learning.graded
-                              : t.learning.overdue
+                          ? t.learning.submitted
+                          : item.status === 'graded'
+                          ? t.learning.graded
+                          : t.learning.overdue
                       }
                       tone={statusTone[item.status]}
                     />
@@ -317,7 +344,9 @@ export function LearningScreen({navigation, route}: Props) {
               <ListCard
                 key={item.id}
                 accent={item.isNew ? 'success' : 'neutral'}
-                onPress={() => navigation.navigate('FileDetail', {id: item.id})}>
+                onPress={() =>
+                  navigation.navigate('FileDetail', {id: item.id})
+                }>
                 <View style={styles.cardHeader}>
                   <Text style={styles.cardTitle} numberOfLines={2}>
                     {item.title}
@@ -325,7 +354,8 @@ export function LearningScreen({navigation, route}: Props) {
                   {item.isNew ? <Badge label="NEW" tone="success" /> : null}
                 </View>
                 <Text style={styles.cardMeta}>
-                  {item.courseName} · {item.fileType.toUpperCase() || 'FILE'} · {item.size}
+                  {item.courseName} · {item.fileType.toUpperCase() || 'FILE'} ·{' '}
+                  {item.size}
                 </Text>
               </ListCard>
             ))
@@ -381,7 +411,9 @@ export function LearningScreen({navigation, route}: Props) {
               <Pressable
                 style={[styles.modalButton, styles.modalButtonGhost]}
                 onPress={() => setModalOpen(false)}>
-                <Text style={styles.modalButtonGhostText}>{t.learning.cancel}</Text>
+                <Text style={styles.modalButtonGhostText}>
+                  {t.learning.cancel}
+                </Text>
               </Pressable>
               <Pressable style={styles.modalButton} onPress={saveManualDdl}>
                 <Text style={styles.modalButtonText}>{t.learning.saveDdl}</Text>
@@ -440,7 +472,11 @@ const styles = StyleSheet.create({
   cardMeta: {...typography.caption, color: colors.textSecondary},
   cardBody: {...typography.caption, color: colors.textSecondary, marginTop: 2},
   deleteInline: {alignSelf: 'flex-start', paddingVertical: spacing.xs},
-  deleteInlineText: {...typography.caption, color: colors.error, fontWeight: '600'},
+  deleteInlineText: {
+    ...typography.caption,
+    color: colors.error,
+    fontWeight: '600',
+  },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',

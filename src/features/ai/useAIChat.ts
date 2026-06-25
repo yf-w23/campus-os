@@ -13,6 +13,10 @@ import {
   runAgent,
 } from '../../services/ai/agentService';
 import {AgentTool} from '../../services/ai/tools';
+import {
+  buildCampusWeatherSummary,
+  fetchHaidianWeather,
+} from '../../services/campus/weather';
 import {loadAIApiKey} from '../../storage/secureStorage';
 import {loadAIMemory, summarizeMemory} from '../../storage/aiMemoryStorage';
 import {
@@ -51,7 +55,7 @@ export function useAIChat() {
   const {snapshot} = useSelector(selectLearning);
   const manualDeadlines = useSelector(selectManualDeadlines);
   const auth = useSelector(selectAuth);
-  const {aiApiKeyConfigured} = useSelector(selectSettings);
+  const {aiApiKeyConfigured, locale} = useSelector(selectSettings);
   const [pendingConfirmation, setPendingConfirmation] =
     useState<PendingConfirmation | null>(null);
 
@@ -102,12 +106,18 @@ export function useAIChat() {
       dispatch(setStreaming(true));
       dispatch(setAIError(undefined));
 
-      const memory = await loadAIMemory();
+      const [memory, weatherSummary] = await Promise.all([
+        loadAIMemory(),
+        fetchHaidianWeather(locale)
+          .then(weather => buildCampusWeatherSummary(weather, locale))
+          .catch(() => undefined),
+      ]);
       const context = buildAgentContext(snapshot, {
         memorySummary: summarizeMemory(memory),
         studentId: auth.session.studentId,
         demoMode: auth.demoMode,
         manualDeadlines,
+        weatherSummary,
       });
 
       try {
@@ -119,51 +129,58 @@ export function useAIChat() {
           const mock = createMockAgentReply(trimmed, context);
           dispatch(appendToLastAssistant(mock));
         } else {
-          await runAgent({...provider, apiKey}, [...history, userMessage], context, {
-            onAnswer: text => dispatch(appendToLastAssistant(text)),
-            onToolStart: (tool: AgentTool, args) => {
-              const label = tool.summarize ? tool.summarize(args) : tool.name;
-              dispatch(setAgentStatus(label));
-              dispatch(
-                pushToolTrace({name: tool.name, label, status: 'running'}),
-              );
-            },
-            onToolEnd: (
-              _tool: AgentTool,
-              status: ActionExecutionStatus,
-              detail,
-            ) => {
-              dispatch(
-                updateLastToolTrace({
-                  status,
-                  detail,
+          await runAgent(
+            {...provider, apiKey},
+            [...history, userMessage],
+            context,
+            {
+              onAnswer: text => dispatch(appendToLastAssistant(text)),
+              onToolStart: (tool: AgentTool, args) => {
+                const label = tool.summarize ? tool.summarize(args) : tool.name;
+                dispatch(setAgentStatus(label));
+                dispatch(
+                  pushToolTrace({name: tool.name, label, status: 'running'}),
+                );
+              },
+              onToolEnd: (
+                _tool: AgentTool,
+                status: ActionExecutionStatus,
+                detail,
+              ) => {
+                dispatch(
+                  updateLastToolTrace({
+                    status,
+                    detail,
+                  }),
+                );
+                dispatch(setAgentStatus(undefined));
+              },
+              requestConfirmation: (tool: AgentTool, args, preview) =>
+                new Promise<boolean>(resolve => {
+                  const prompt = tool.confirmPrompt?.(args, preview);
+                  setPendingConfirmation({
+                    tool,
+                    preview,
+                    spec: {
+                      title: prompt?.title ?? '确认操作',
+                      message: prompt?.message ?? '确认执行该操作？',
+                      confirmLabel: prompt?.confirmLabel,
+                      cancelLabel: prompt?.cancelLabel,
+                      destructive: prompt?.destructive,
+                    },
+                    resolve,
+                  });
                 }),
-              );
-              dispatch(setAgentStatus(undefined));
             },
-            requestConfirmation: (tool: AgentTool, args, preview) =>
-              new Promise<boolean>(resolve => {
-                const prompt = tool.confirmPrompt?.(args, preview);
-                setPendingConfirmation({
-                  tool,
-                  preview,
-                  spec: {
-                    title: prompt?.title ?? '确认操作',
-                    message: prompt?.message ?? '确认执行该操作？',
-                    confirmLabel: prompt?.confirmLabel,
-                    cancelLabel: prompt?.cancelLabel,
-                    destructive: prompt?.destructive,
-                  },
-                  resolve,
-                });
-              }),
-          });
+          );
         }
       } catch (error) {
         dispatch(
           setAIError(error instanceof Error ? error.message : 'AI 回复失败'),
         );
-        dispatch(appendToLastAssistant('\n\n[错误] 请检查 API Key 与网络连接。'));
+        dispatch(
+          appendToLastAssistant('\n\n[错误] 请检查 API Key 与网络连接。'),
+        );
       } finally {
         dispatch(setAgentStatus(undefined));
         dispatch(setStreaming(false));
@@ -175,6 +192,7 @@ export function useAIChat() {
       auth.demoMode,
       auth.session.studentId,
       dispatch,
+      locale,
       messages,
       manualDeadlines,
       provider,

@@ -75,6 +75,11 @@ import {
   listNativeMailMessages,
   readNativeMailMessage,
 } from '../campus/nativeMail';
+import {
+  buildCampusWeatherSummary,
+  dailyMaxPrecipitationMeaning,
+  fetchHaidianWeather,
+} from '../campus/weather';
 import {fetchHomeworkDetail} from '../campus/homeworkDetail';
 import {patchAIMemory} from '../../storage/aiMemoryStorage';
 import {
@@ -236,6 +241,75 @@ function sameMinute(left: Date, right: Date): boolean {
 // ============================================================
 // 读工具
 // ============================================================
+
+function parseToolWeatherTime(value?: string): number | undefined {
+  const time = Date.parse(String(value ?? ''));
+  return Number.isNaN(time) ? undefined : time;
+}
+
+function upcomingWeatherHours<T extends {time: string}>(items: T[]): T[] {
+  const now = Date.now();
+  const firstIndex = items.findIndex(item => {
+    const time = parseToolWeatherTime(item.time);
+    return time != null && time >= now - 60 * 60 * 1000;
+  });
+  return items.slice(Math.max(firstIndex, 0), Math.max(firstIndex, 0) + 12);
+}
+
+const getCampusWeatherTool: AgentTool = {
+  name: 'get_campus_weather',
+  title: '海淀天气',
+  description:
+    '查询北京市海淀区当前天气、近 3 小时降水概率、小时预报、未来几天天气和校园出行建议。当用户问天气、是否带伞、防晒、通勤或受天气影响的学习安排时使用。',
+  parameters: {
+    type: 'object',
+    properties: {
+      includeHourly: {
+        type: 'boolean',
+        description: '是否返回未来 12 小时预报，默认 true',
+      },
+    },
+  },
+  risk: 'read',
+  permission: 'campus.weather.read',
+  summarize: () => '查询海淀天气',
+  run: async (args: {includeHourly?: boolean}) => {
+    const locale = store.getState().settings.locale;
+    const weather = await fetchHaidianWeather(locale);
+    const includeHourly = args?.includeHourly !== false;
+    return {
+      location: weather.location,
+      updatedAt: weather.updatedAt,
+      summary: buildCampusWeatherSummary(weather, locale),
+      current: {
+        temperature: weather.temperature,
+        apparentTemperature: weather.apparentTemperature,
+        condition: weather.condition,
+        weatherCode: weather.weatherCode,
+        precipitation: weather.precipitation,
+        shortTermPrecipitationProbability:
+          weather.shortTermPrecipitationProbability,
+        dailyPrecipitationProbabilityMax:
+          weather.dailyPrecipitationProbabilityMax,
+        uvIndex: weather.uvIndex,
+        windSpeed: weather.windSpeed,
+        windGusts: weather.windGusts,
+        humidity: weather.humidity,
+      },
+      rainProbabilitySemantics: {
+        shortTermPrecipitationProbability:
+          locale === 'zh'
+            ? '当前小时起未来 3 小时内的最高降水概率；回答现在出门、是否需要马上带伞时优先使用这个值。'
+            : 'Highest rain probability from the current hour through the next 3 hours; prioritize this for immediate travel and umbrella advice.',
+        dailyPrecipitationProbabilityMax: dailyMaxPrecipitationMeaning(locale),
+      },
+      daily: weather.daily.slice(0, 3),
+      hourly: includeHourly ? upcomingWeatherHours(weather.hourly) : undefined,
+      advice: weather.advice,
+      source: weather.source,
+    };
+  },
+};
 
 const getTodayTool: AgentTool = {
   name: 'get_today_overview',
@@ -2632,6 +2706,7 @@ const readMailMessageTool: AgentTool = {
 };
 
 export const AGENT_TOOLS: AgentTool[] = [
+  getCampusWeatherTool,
   getTodayTool,
   getWeekScheduleTool,
   listPersonalEventsTool,

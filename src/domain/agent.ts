@@ -56,6 +56,8 @@ export interface AgentContext {
   scheduleSummary: string;
   ddlSummary: string;
   courseSummary: string;
+  /** 海淀天气快照；实时追问时可让 agent 调工具刷新 */
+  weatherSummary?: string;
   /** 用户个性化记忆摘要（常用图书馆、默认充值额、关注课程等）*/
   memorySummary?: string;
   /** 当前登录学号 */

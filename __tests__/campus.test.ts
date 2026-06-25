@@ -8,8 +8,23 @@ import {
   flattenSchedulesToEvents,
   parseScheduleJson,
 } from '../src/services/campus/scheduleModel';
-import {buildAgentContext} from '../src/services/ai/agentService';
+import {
+  buildAgentContext,
+  buildSystemPrompt,
+} from '../src/services/ai/agentService';
 import {demoLearningSnapshot} from '../src/fixtures/demoData';
+import {
+  buildCampusWeatherSummary,
+  buildWeatherAdvice,
+  describeWeatherCode,
+  normalizeOpenMeteoWeather,
+} from '../src/services/campus/weather';
+import {buildHomeWorkbenchBlocks} from '../src/features/home/homeWorkbench';
+import {getToolByName, toolSpecs} from '../src/services/ai/tools';
+import {
+  isDeadlineVisible,
+  selectUpcomingDeadlines,
+} from '../src/state/selectors';
 import {gb2312PercentEncode, gb2312PercentDecode} from '../src/utils/encoding';
 import {
   CLASSROOM_PERIODS,
@@ -84,6 +99,252 @@ describe('buildAgentContext', () => {
     expect(context.scheduleSummary).toContain('数据结构');
     expect(context.ddlSummary).toContain('编程作业 3');
     expect(context.courseSummary).toContain('计算机网络');
+  });
+
+  it('injects weather snapshot into the system prompt', () => {
+    const context = buildAgentContext(demoLearningSnapshot, {
+      weatherSummary: '北京市海淀区：29°，晴，近 3 小时降水 0%',
+    });
+    const prompt = buildSystemPrompt(context);
+
+    expect(context.weatherSummary).toContain('近 3 小时降水 0%');
+    expect(prompt).toContain('## 海淀天气');
+    expect(prompt).toContain('get_campus_weather');
+    expect(prompt).toContain('北京市海淀区：29°');
+    expect(prompt).toContain('不要把它说成当前降水概率');
+  });
+});
+
+describe('campus weather', () => {
+  it('maps Open-Meteo weather codes to campus-facing labels', () => {
+    expect(describeWeatherCode(0, 'zh')).toBe('晴');
+    expect(describeWeatherCode(61, 'zh')).toBe('有雨');
+    expect(describeWeatherCode(95, 'en')).toBe('Thunderstorm');
+  });
+
+  it('builds practical advice from rain and UV risk', () => {
+    const advice = buildWeatherAdvice(
+      {
+        weatherCode: 61,
+        temperatureMax: 31,
+        precipitationProbability: 80,
+        uvIndex: 7,
+        windSpeed: 12,
+      },
+      'zh',
+    );
+
+    expect(advice.join(' ')).toContain('带伞');
+    expect(advice.join(' ')).toContain('防晒');
+  });
+
+  it('normalizes Open-Meteo data into a Haidian weather summary', () => {
+    const weather = normalizeOpenMeteoWeather(
+      {
+        current: {
+          time: '2026-06-14T10:15',
+          temperature_2m: 28.4,
+          apparent_temperature: 30.2,
+          weather_code: 2,
+          wind_speed_10m: 9,
+          relative_humidity_2m: 62,
+        },
+        daily: {
+          temperature_2m_max: [32],
+          temperature_2m_min: [22],
+          precipitation_probability_max: [35],
+          uv_index_max: [6.5],
+          weather_code: [2],
+        },
+      },
+      'zh',
+    );
+
+    expect(weather.location).toBe('北京市海淀区');
+    expect(weather.condition).toBe('多云');
+    expect(weather.temperatureMax).toBe(32);
+    expect(weather.advice.length).toBeGreaterThan(0);
+  });
+
+  it('uses near-term hourly rain probability instead of daily max on the home summary', () => {
+    const weather = normalizeOpenMeteoWeather(
+      {
+        current: {
+          time: '2026-06-17T14:15',
+          temperature_2m: 29,
+          weather_code: 0,
+          precipitation: 0,
+        },
+        hourly: {
+          time: [
+            '2026-06-17T14:00',
+            '2026-06-17T15:00',
+            '2026-06-17T16:00',
+            '2026-06-17T23:00',
+          ],
+          temperature_2m: [29, 30, 30, 24],
+          weather_code: [0, 0, 0, 61],
+          precipitation_probability: [0, 0, 0, 100],
+        },
+        daily: {
+          time: ['2026-06-17'],
+          temperature_2m_max: [32],
+          temperature_2m_min: [21],
+          precipitation_probability_max: [100],
+          uv_index_max: [6],
+          weather_code: [0],
+        },
+      },
+      'zh',
+    );
+
+    expect(weather.condition).toBe('晴');
+    expect(weather.precipitationProbability).toBe(0);
+    expect(weather.shortTermPrecipitationProbability).toBe(0);
+    expect(weather.dailyPrecipitationProbabilityMax).toBe(100);
+    expect(weather.hourly).toHaveLength(4);
+    expect(weather.daily).toHaveLength(1);
+    expect(buildCampusWeatherSummary(weather, 'zh')).toContain(
+      '近 3 小时降水 0%',
+    );
+    expect(buildCampusWeatherSummary(weather, 'zh')).toContain(
+      '今日最高降水概率 100%（非当前）',
+    );
+    expect(buildCampusWeatherSummary(weather, 'zh')).toContain(
+      '不是当前降水概率',
+    );
+  });
+});
+
+describe('agent tools', () => {
+  it('exposes campus weather as a read-only agent tool', () => {
+    const tool = getToolByName('get_campus_weather');
+
+    expect(tool?.risk).toBe('read');
+    expect(tool?.permission).toBe('campus.weather.read');
+    expect(
+      toolSpecs().some(spec => {
+        const fn = spec.function as {name?: string} | undefined;
+        return fn?.name === 'get_campus_weather';
+      }),
+    ).toBe(true);
+  });
+});
+
+describe('home workbench', () => {
+  it('builds compact briefing and task plan blocks for the home screen', () => {
+    const blocks = buildHomeWorkbenchBlocks({
+      schedule: [
+        {
+          id: 's1',
+          date: new Date().toISOString().slice(0, 10),
+          title: '高电压工程',
+          location: '六教',
+          startTime: '23:00',
+          endTime: '23:45',
+          category: 'course',
+        },
+      ],
+      deadlines: [
+        {
+          kind: 'manual',
+          id: 'd1',
+          title: '暂态作业',
+          deadline: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          status: 'pending',
+          submitted: false,
+          courseName: '暂态',
+        },
+      ],
+      unread: [],
+      weather: normalizeOpenMeteoWeather(
+        {
+          current: {temperature_2m: 26, weather_code: 0},
+          daily: {
+            temperature_2m_max: [30],
+            temperature_2m_min: [20],
+            precipitation_probability_max: [10],
+            uv_index_max: [4],
+          },
+        },
+        'zh',
+      ),
+      locale: 'zh',
+    });
+
+    expect(blocks.map(block => block.type)).toEqual(['briefing', 'task_plan']);
+    expect(blocks[0].title).toBe('今日重点');
+    expect(blocks[0].subtitle).toContain('海淀');
+    expect(
+      blocks[1].actions?.some(action => action.type === 'add_deadline'),
+    ).toBe(true);
+    expect(
+      blocks.some(block =>
+        block.actions?.some(action => action.type === 'ask_ai'),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('deadline visibility', () => {
+  it('keeps DDL overdue within one day and hides older overdue items', () => {
+    const now = new Date('2026-06-14T12:00:00+08:00').getTime();
+
+    expect(isDeadlineVisible('2026-06-13T12:01:00+08:00', now)).toBe(true);
+    expect(isDeadlineVisible('2026-06-13T11:59:00+08:00', now)).toBe(false);
+    expect(isDeadlineVisible('not-a-date', now)).toBe(true);
+  });
+
+  it('filters old overdue homework and manual deadlines from todo lists', () => {
+    const state = {
+      learning: {
+        snapshot: {
+          homework: [
+            {
+              id: 'old-homework',
+              title: '旧作业',
+              courseName: '高电压工程',
+              deadline: new Date(
+                Date.now() - 25 * 60 * 60 * 1000,
+              ).toISOString(),
+              status: 'overdue',
+              submitted: false,
+            },
+            {
+              id: 'recent-homework',
+              title: '刚逾期作业',
+              courseName: '信号与系统',
+              deadline: new Date(
+                Date.now() - 23 * 60 * 60 * 1000,
+              ).toISOString(),
+              status: 'overdue',
+              submitted: false,
+            },
+          ],
+        },
+      },
+      manualDeadlines: {
+        items: [
+          {
+            id: 'old-manual',
+            title: '旧自建 DDL',
+            deadline: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(),
+            createdAt: '2026-06-01T00:00:00+08:00',
+          },
+          {
+            id: 'future-manual',
+            title: '未来自建 DDL',
+            deadline: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+            createdAt: '2026-06-01T00:00:00+08:00',
+          },
+        ],
+      },
+    } as any;
+
+    expect(selectUpcomingDeadlines(state).map(item => item.id)).toEqual([
+      'recent-homework',
+      'future-manual',
+    ]);
   });
 });
 

@@ -5,6 +5,7 @@ import {NavigationContainer} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {useTranslation} from '../i18n';
 import {HomeScreen} from '../../features/home/HomeScreen';
+import {WeatherDetailScreen} from '../../features/home/WeatherDetailScreen';
 import {LearningScreen} from '../../features/learning/LearningScreen';
 import {CourseDetailScreen} from '../../features/learning/CourseDetailScreen';
 import {HomeworkDetailScreen} from '../../features/learning/HomeworkDetailScreen';
@@ -158,11 +159,7 @@ function MainTabs() {
         component={AIScreen}
         options={{
           tabBarIcon: ({focused}) => (
-            <TabIcon
-              focused={focused}
-              source={uiImages.ai}
-              label={t.tabs.ai}
-            />
+            <TabIcon focused={focused} source={uiImages.ai} label={t.tabs.ai} />
           ),
         }}
       />
@@ -198,9 +195,19 @@ export function AppNavigator() {
         {isLoggedIn ? (
           <>
             <Stack.Screen name="Main" component={MainTabs} />
+            <Stack.Screen
+              name="WeatherDetail"
+              component={WeatherDetailScreen}
+            />
             <Stack.Screen name="CourseDetail" component={CourseDetailScreen} />
-            <Stack.Screen name="HomeworkDetail" component={HomeworkDetailScreen} />
-            <Stack.Screen name="NotificationDetail" component={NotificationDetailScreen} />
+            <Stack.Screen
+              name="HomeworkDetail"
+              component={HomeworkDetailScreen}
+            />
+            <Stack.Screen
+              name="NotificationDetail"
+              component={NotificationDetailScreen}
+            />
             <Stack.Screen name="FileDetail" component={FileDetailScreen} />
             <Stack.Screen
               name="InAppViewer"
@@ -211,25 +218,52 @@ export function AppNavigator() {
             <Stack.Screen name="CampusGrades" component={GradesScreen} />
             <Stack.Screen name="CampusPEtest" component={PEtestScreen} />
             <Stack.Screen name="CampusDormitory" component={DormitoryScreen} />
-            <Stack.Screen name="CampusLaundry" component={CampusLaundryScreen} />
+            <Stack.Screen
+              name="CampusLaundry"
+              component={CampusLaundryScreen}
+            />
             <Stack.Screen
               name="CampusLaundryDetail"
               component={CampusLaundryDetailScreen}
             />
-            <Stack.Screen name="CampusFinance" component={CampusFinanceScreen} />
-            <Stack.Screen name="CampusNetwork" component={CampusNetworkScreen} />
+            <Stack.Screen
+              name="CampusFinance"
+              component={CampusFinanceScreen}
+            />
+            <Stack.Screen
+              name="CampusNetwork"
+              component={CampusNetworkScreen}
+            />
             <Stack.Screen name="CampusMail" component={MailScreen} />
-            <Stack.Screen name="CampusMailDetail" component={CampusMailDetailScreen} />
-            <Stack.Screen name="CampusMailCompose" component={CampusMailComposeScreen} />
+            <Stack.Screen
+              name="CampusMailDetail"
+              component={CampusMailDetailScreen}
+            />
+            <Stack.Screen
+              name="CampusMailCompose"
+              component={CampusMailComposeScreen}
+            />
             <Stack.Screen
               name="CampusMailViewer"
               component={CampusMailViewerScreen}
               options={{presentation: 'modal'}}
             />
-            <Stack.Screen name="CampusEleBalance" component={EleBalanceScreen} />
-            <Stack.Screen name="CampusEleRecharge" component={EleRechargeScreen} />
-            <Stack.Screen name="CampusReservation" component={ReservationScreen} />
-            <Stack.Screen name="CampusLibrary" component={LibraryNativeScreen} />
+            <Stack.Screen
+              name="CampusEleBalance"
+              component={EleBalanceScreen}
+            />
+            <Stack.Screen
+              name="CampusEleRecharge"
+              component={EleRechargeScreen}
+            />
+            <Stack.Screen
+              name="CampusReservation"
+              component={ReservationScreen}
+            />
+            <Stack.Screen
+              name="CampusLibrary"
+              component={LibraryNativeScreen}
+            />
             <Stack.Screen
               name="CampusLibraryFloor"
               component={LibraryFloorScreen}

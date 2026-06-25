@@ -8,7 +8,7 @@
 
 把课表、作业、成绩、教室、电费、校园卡、校园网、图书馆座位、AI 助手、AI 记忆、AI 工作流与主动监控揉到一个 App 里。完全 native UI，不依赖任何业务后端 —— 你的账号密码和 API Key 只存在你手机的安全存储里。
 
-**当前版本：v1.1.3** · [下载 APK](https://github.com/yf-w23/campus-os/releases/latest)
+**当前版本：v2.1.1** · [下载 APK](https://github.com/yf-w23/campus-os/releases/latest)
 
 ---
 
@@ -18,7 +18,7 @@
 
 [**Releases → 最新版本**](https://github.com/yf-w23/campus-os/releases/latest)
 
-下载 `campus-os-v1.1.3-android-arm64.apk`（约 34 MB），传到 Android 手机安装即可。
+下载 `campus-os-v2.1.1-android-arm64.apk`（约 34 MB），传到 Android 手机安装即可。
 
 - 系统要求：Android 7+（API 24+）
 - 架构：arm64-v8a（2018 年后绝大多数手机都是；32 位 / x86 模拟器暂不支持）
@@ -121,6 +121,21 @@ npm run android           # 另开终端编译 debug 包
 - **操作审计**：查看全部 AI 操作的脱敏日志
 - **AI 记忆**：查看/编辑/清除 AI 记忆
 - 退出登录（清掉 Keychain + Redux + 持久化会话标记）
+
+---
+
+## v2.1.1 更新摘要（2026-06）
+
+| 项目 | 说明 |
+|---|---|
+| 首页重构 | 移除大号学号、重复统计和泛 AI 入口，改为更紧凑的今日重点与建议操作 |
+| 天气详情 | 首页天气可点击进入海淀天气详情，支持当前天气、小时预报、未来几天、UV、湿度、体感和风速 |
+| 天气语义 | 修复把“当天最高降水概率”误当作当前降水概率的问题；短时出行优先看近 3 小时降水 |
+| AI 天气工具 | AI 新增 `get_campus_weather` 工具，并在系统提示中注入海淀天气快照，可回答带伞、防晒、通勤与学习安排问题 |
+| DDL 过滤 | 首页、待办与学习页 DDL 不再显示逾期超过一天的项目 |
+| 原生工作台 | 首页建议操作改为跳转原生日程、作业、通知、空教室与图书馆入口，减少“都去问 AI”的半成品感 |
+| 版本号 | 从 v1.1.3 升级至 v2.1.1，Android versionCode 升至 211 |
+| Release | [v2.1.1](https://github.com/yf-w23/campus-os/releases/tag/v2.1.1) 附 arm64 APK |
 
 ---
 

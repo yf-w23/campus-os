@@ -86,6 +86,7 @@ export function buildAgentContext(
     studentId?: string;
     demoMode?: boolean;
     manualDeadlines?: ManualDeadline[];
+    weatherSummary?: string;
   },
 ): AgentContext {
   const today = todayLocalISO();
@@ -94,6 +95,7 @@ export function buildAgentContext(
     memorySummary: extra?.memorySummary,
     studentId: extra?.studentId,
     demoMode: extra?.demoMode,
+    weatherSummary: extra?.weatherSummary,
   };
 
   if (!snapshot) {
@@ -168,6 +170,8 @@ export function buildSystemPrompt(context: AgentContext): string {
     '- 选课、支付、校园卡挂失/充值/改密码、教学评价提交、邮件发送等高风险事务当前不自动执行；只能给出方案或提醒用户到官方页面手动处理。',
     '- 问「这周/某天有什么安排」时优先用 get_week_schedule；仅查用户自建备忘用 list_personal_events。不能删除或修改教务课表，只能增删个人备忘。',
     '- 问 DDL/作业/待办时优先用 list_homework，它会合并老师布置的作业与用户自建 DDL。用户要求新增 DDL 时用 add_manual_deadline；要求删除 DDL 时只能用 remove_manual_deadline 删除自建 DDL，老师布置的作业不能删除。',
+    '- 问天气、是否带伞、防晒、通勤路线、户外活动或受天气影响的学习安排时，优先使用 get_campus_weather 刷新海淀天气；下方天气上下文只是进入对话时的快照。',
+    '- 天气工具中的 dailyPrecipitationProbabilityMax / 当天最高降水概率，表示这一天里某个小时段的最高降水概率；不要把它说成当前降水概率，也不要说成全天都会下雨。当前出门建议优先依据 shortTermPrecipitationProbability 和小时预报。',
     '- 问空教室、自习地点、某教学楼空闲情况时，先用 list_classroom_buildings 或 find_available_classrooms 获取真实教室状态。',
     '- 预约图书馆座位按"列馆→列楼层→列分区→找座位→预约"的顺序逐步推进，不要反复试探。',
     '- 用户问图书馆当前预约记录或取消座位预约时，先用 list_library_booking_records 获取真实记录，再用其中 delId 调 cancel_library_seat_booking。',
@@ -194,6 +198,10 @@ export function buildSystemPrompt(context: AgentContext): string {
     '',
     '## 个性化记忆',
     context.memorySummary ?? '（暂无个性化记忆）',
+    '',
+    '## 海淀天气（进入对话时的快照）',
+    context.weatherSummary ??
+      '天气暂未获取；如用户询问天气，请调用 get_campus_weather。',
     '',
     '## 今日课表（已按今天的真实日期筛选）',
     context.todaySummary,
@@ -608,6 +616,9 @@ export function createMockAgentReply(
     '',
     '今日课表：',
     context.todaySummary,
+    '',
+    '海淀天气：',
+    context.weatherSummary ?? '天气暂未获取',
     '',
     '待办 DDL：',
     context.ddlSummary,

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
 import {
   Alert,
   Pressable,
@@ -27,17 +27,27 @@ import {
 } from '../../state/selectors';
 import {AppDispatch} from '../../state/store';
 import {syncCampusData} from '../../state/thunks/syncCampusData';
+import {AgentUIAction} from '../../domain/agentUi';
+import {
+  CampusWeather,
+  fetchHaidianWeather,
+} from '../../services/campus/weather';
+import {AgentUIRenderer} from '../agent-ui/AgentUIRenderer';
 import {PrimaryButton} from '../common/components/Buttons';
 import {FadeIn, StaggerItem} from '../common/components/Animated';
 import {HomeLoadingSkeleton} from '../common/components/Skeleton';
-import {Badge, GradientCard, SectionHeader} from '../common/components/Ui';
+import {SectionHeader} from '../common/components/Ui';
+import {buildHomeWorkbenchBlocks} from './homeWorkbench';
 
 type HomeScreenProps = CompositeScreenProps<
   BottomTabScreenProps<RootTabParamList, 'Home'>,
   NativeStackScreenProps<RootStackParamList>
 >;
 
-function template(value: string, vars: Record<string, string | number>): string {
+function template(
+  value: string,
+  vars: Record<string, string | number>,
+): string {
   return value.replace(/\{(\w+)\}/g, (_, key) => String(vars[key] ?? ''));
 }
 
@@ -70,45 +80,153 @@ function greetingByHour(locale: 'zh' | 'en'): string {
   return '晚上好';
 }
 
-function BentoStat({
-  value,
-  label,
-  accent,
-}: {
-  value: number;
-  label: string;
-  accent?: string;
-}) {
-  return (
-    <View style={styles.bentoStat}>
-      <Text style={[styles.bentoValue, accent ? {color: accent} : null]}>{value}</Text>
-      <Text style={styles.bentoLabel}>{label}</Text>
-    </View>
-  );
+function formatToday(locale: 'zh' | 'en'): string {
+  const now = new Date();
+  if (locale === 'en') {
+    return now.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      weekday: 'short',
+    });
+  }
+  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  return `${now.getMonth() + 1}月${now.getDate()}日 ${weekdays[now.getDay()]}`;
+}
+
+function compactWeatherLine(
+  weather: CampusWeather | null,
+  loading: boolean,
+  locale: 'zh' | 'en',
+): string {
+  if (weather) {
+    const temp =
+      typeof weather.temperature === 'number'
+        ? `${Math.round(weather.temperature)}°`
+        : '--';
+    const rain =
+      typeof weather.precipitationProbability === 'number'
+        ? ` · ${locale === 'zh' ? '近3h降水' : '3h rain'} ${Math.round(
+            weather.precipitationProbability,
+          )}%`
+        : '';
+    return `${locale === 'zh' ? '海淀' : 'Haidian'} ${temp} · ${
+      weather.condition
+    }${rain}`;
+  }
+  return loading
+    ? locale === 'zh'
+      ? '海淀天气更新中'
+      : 'Updating Haidian weather'
+    : locale === 'zh'
+    ? '海淀天气暂不可用'
+    : 'Haidian weather unavailable';
 }
 
 export function HomeScreen({navigation}: HomeScreenProps) {
   const t = useTranslation();
   const dispatch = useDispatch<AppDispatch>();
   const auth = useSelector(selectAuth);
-  const {loading, error, dataSource, lastSyncedAt} = useSelector(selectLearning);
+  const {loading, error, dataSource, lastSyncedAt} =
+    useSelector(selectLearning);
 
   const isDemoData = useSelector(selectIsDemoData);
   const schedule = useSelector(selectTodaySchedule);
   const deadlines = useSelector(selectUpcomingDeadlines);
   const unread = useSelector(selectUnreadNotifications);
   const {locale} = useSelector(selectSettings);
+  const [weather, setWeather] = useState<CampusWeather | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherError, setWeatherError] = useState<string | null>(null);
 
   const handleSync = () => {
     dispatch(syncCampusData());
   };
 
   const openAI = (question?: string) => {
-    navigation.navigate('AI', question ? {initialQuestion: question} : undefined);
+    navigation.navigate(
+      'AI',
+      question ? {initialQuestion: question} : undefined,
+    );
   };
 
   const openAddDdl = () => {
-    navigation.navigate('Learning', {initialTab: 'homework', openAddDeadline: true});
+    navigation.navigate('Learning', {
+      initialTab: 'homework',
+      openAddDeadline: true,
+    });
+  };
+
+  const openWeatherDetail = () => {
+    navigation.navigate('WeatherDetail');
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    setWeatherLoading(true);
+    setWeatherError(null);
+    fetchHaidianWeather(locale)
+      .then(result => {
+        if (!cancelled) {
+          setWeather(result);
+        }
+      })
+      .catch(weatherFetchError => {
+        if (!cancelled) {
+          setWeatherError(
+            weatherFetchError instanceof Error
+              ? weatherFetchError.message
+              : 'Weather request failed',
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setWeatherLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [locale]);
+
+  const workbenchBlocks = useMemo(
+    () =>
+      buildHomeWorkbenchBlocks({
+        schedule,
+        deadlines,
+        unread,
+        weather,
+        weatherLoading,
+        weatherError,
+        locale,
+      }),
+    [
+      deadlines,
+      locale,
+      schedule,
+      unread,
+      weather,
+      weatherError,
+      weatherLoading,
+    ],
+  );
+
+  const handleAgentAction = (action: AgentUIAction) => {
+    if (action.type === 'ask_ai') {
+      openAI(action.question);
+      return;
+    }
+    if (action.type === 'add_deadline') {
+      openAddDdl();
+      return;
+    }
+    if (action.type === 'sync') {
+      handleSync();
+      return;
+    }
+    if (action.type === 'navigate' && action.routeName) {
+      (navigation as any).navigate(action.routeName, action.params);
+    }
   };
 
   return (
@@ -118,36 +236,40 @@ export function HomeScreen({navigation}: HomeScreenProps) {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}>
         <FadeIn>
-          <GradientCard style={styles.heroCard}>
-            <Text style={styles.greeting}>{greetingByHour(locale)}</Text>
-            <Text style={styles.name} numberOfLines={1}>
-              {auth?.session?.displayName ?? t.appName}
-            </Text>
-            <View style={styles.badgeRow}>
-              {auth.demoMode || isDemoData ? (
-                <Badge label={t.home.demoBadge} tone="warning" />
-              ) : (
-                <Badge label={t.home.campusBadge} tone="success" />
-              )}
-              {lastSyncedAt && !auth.demoMode && dataSource === 'campus' ? (
-                <Text style={styles.syncMeta}>
-                  · {template(t.home.syncedAt, {time: lastSyncedAt.slice(11, 16)})}
+          <View style={styles.topHeader}>
+            <View style={styles.topHeaderCopy}>
+              <Text style={styles.headerEyebrow}>
+                {greetingByHour(locale)} · {formatToday(locale)}
+              </Text>
+              <Text style={styles.headerTitle}>{t.appName}</Text>
+              <Pressable
+                onPress={openWeatherDetail}
+                hitSlop={8}
+                accessibilityRole="button"
+                style={({pressed}) => [
+                  styles.weatherLink,
+                  pressed && styles.weatherLinkPressed,
+                ]}>
+                <Text style={styles.headerMeta} numberOfLines={1}>
+                  {compactWeatherLine(weather, weatherLoading, locale)} ·{' '}
+                  {locale === 'zh' ? '详情' : 'Details'}
                 </Text>
-              ) : null}
+              </Pressable>
             </View>
-            <Pressable
-              style={({pressed}) => [styles.aiCta, pressed && styles.aiCtaPressed]}
-              onPress={() => openAI(t.ai.suggestions[0])}>
-              <LinearGradient
-                colors={[colors.primary, colors.primaryDark]}
-                start={{x: 0, y: 0}}
-                end={{x: 1, y: 0}}
-                style={styles.aiCtaInner}>
-                <Text style={styles.aiCtaLabel}>{t.home.quickAsk}</Text>
-                <Text style={styles.aiCtaHint}>{t.ai.suggestions[0]}</Text>
-              </LinearGradient>
-            </Pressable>
-          </GradientCard>
+            <View style={styles.statusPill}>
+              <Text style={styles.statusPillText} numberOfLines={1}>
+                {auth.demoMode || isDemoData
+                  ? t.home.demoBadge
+                  : lastSyncedAt && dataSource === 'campus'
+                  ? template(t.home.syncedAt, {
+                      time: lastSyncedAt.slice(11, 16),
+                    })
+                  : locale === 'zh'
+                  ? '待同步'
+                  : 'Sync pending'}
+              </Text>
+            </View>
+          </View>
         </FadeIn>
 
         {error && !auth.demoMode ? (
@@ -169,19 +291,11 @@ export function HomeScreen({navigation}: HomeScreenProps) {
 
         {!loading || auth.demoMode ? (
           <>
-            <FadeIn delay={120}>
-              <View style={styles.bentoRow}>
-                <View style={[styles.bentoTile, styles.bentoTileWide]}>
-                  <Text style={styles.bentoTileTitle}>{t.home.todayOverview}</Text>
-                  <View style={styles.bentoStatsRow}>
-                    <BentoStat value={schedule.length} label={t.home.coursesCount} accent={colors.primary} />
-                    <View style={styles.bentoDivider} />
-                    <BentoStat value={deadlines.length} label={t.home.tasksCount} />
-                    <View style={styles.bentoDivider} />
-                    <BentoStat value={unread.length} label={t.home.unreadCount} />
-                  </View>
-                </View>
-              </View>
+            <FadeIn delay={100}>
+              <AgentUIRenderer
+                blocks={workbenchBlocks}
+                onAction={handleAgentAction}
+              />
             </FadeIn>
 
             <SectionHeader title={t.home.todaySchedule} />
@@ -189,15 +303,22 @@ export function HomeScreen({navigation}: HomeScreenProps) {
               <View style={styles.todayCard}>
                 {schedule.length === 0 ? (
                   <Text style={styles.emptyLine}>
-                    {auth.demoMode ? t.home.demoNoClasses : t.home.noClassesToday}
+                    {auth.demoMode
+                      ? t.home.demoNoClasses
+                      : t.home.noClassesToday}
                   </Text>
                 ) : (
                   schedule.map((item, idx) => (
                     <View
                       key={item.id}
-                      style={[styles.scheduleRow, idx > 0 && styles.scheduleDivider]}>
+                      style={[
+                        styles.scheduleRow,
+                        idx > 0 && styles.scheduleDivider,
+                      ]}>
                       <View style={styles.scheduleTime}>
-                        <Text style={styles.scheduleStart}>{item.startTime}</Text>
+                        <Text style={styles.scheduleStart}>
+                          {item.startTime}
+                        </Text>
                         <Text style={styles.scheduleEnd}>{item.endTime}</Text>
                       </View>
                       <LinearGradient
@@ -243,7 +364,10 @@ export function HomeScreen({navigation}: HomeScreenProps) {
                         Alert.alert(
                           item.title,
                           [
-                            `${t.learning.deadlinePrefix.replace('{deadline}', item.deadline)}`,
+                            `${t.learning.deadlinePrefix.replace(
+                              '{deadline}',
+                              item.deadline,
+                            )}`,
                             item.courseName,
                             item.note,
                           ]
@@ -267,20 +391,6 @@ export function HomeScreen({navigation}: HomeScreenProps) {
                 ))}
               </View>
             )}
-
-            <FadeIn delay={180}>
-              <Pressable
-                style={({pressed}) => [styles.quickAskCard, pressed && styles.listItemPressed]}
-                onPress={() => openAI()}>
-                <View style={styles.quickAskCopy}>
-                  <Text style={styles.quickAskTitle}>{t.home.quickAsk}</Text>
-                  <Text style={styles.quickAskDesc}>{t.ai.emptyDesc}</Text>
-                </View>
-                <View style={styles.quickAskArrow}>
-                  <Text style={styles.quickAskArrowText}>→</Text>
-                </View>
-              </Pressable>
-            </FadeIn>
 
             {!auth.demoMode ? (
               <View style={styles.syncButtonWrap}>
@@ -307,53 +417,54 @@ const styles = StyleSheet.create({
   scroll: {flex: 1},
   content: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.xxl,
   },
-  heroCard: {
+  topHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.md,
     marginBottom: spacing.lg,
   },
-  greeting: {
-    ...typography.caption,
-    color: colors.textSecondary,
+  topHeaderCopy: {
+    flex: 1,
+    gap: 3,
   },
-  name: {
-    ...typography.display,
-    color: colors.text,
-    marginTop: 4,
-  },
-  badgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  syncMeta: {
+  headerEyebrow: {
     ...typography.caption,
     color: colors.textMuted,
   },
-  aiCta: {
-    borderRadius: radii.lg,
-    overflow: 'hidden',
-  },
-  aiCtaPressed: {
-    opacity: 0.9,
-    transform: [{scale: 0.99}],
-  },
-  aiCtaInner: {
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    gap: 4,
-  },
-  aiCtaLabel: {
-    ...typography.label,
-    color: colors.textInvert,
+  headerTitle: {
+    fontSize: 22,
+    lineHeight: 28,
     fontWeight: '700',
+    color: colors.text,
   },
-  aiCtaHint: {
+  headerMeta: {
     ...typography.caption,
-    color: 'rgba(255,255,255,0.82)',
+    color: colors.textSecondary,
+  },
+  weatherLink: {
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+  },
+  weatherLinkPressed: {
+    opacity: 0.65,
+  },
+  statusPill: {
+    maxWidth: 112,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.xs + 1,
+  },
+  statusPillText: {
+    ...typography.micro,
+    color: colors.textSecondary,
+    fontWeight: '600',
   },
   errorCard: {
     backgroundColor: colors.errorMuted,
@@ -371,49 +482,6 @@ const styles = StyleSheet.create({
   errorText: {
     ...typography.caption,
     color: colors.text,
-  },
-  bentoRow: {
-    marginBottom: spacing.md,
-  },
-  bentoTile: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    padding: spacing.md,
-  },
-  bentoTileWide: {
-    width: '100%',
-  },
-  bentoTileTitle: {
-    ...typography.caption,
-    color: colors.textMuted,
-    marginBottom: spacing.sm,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  bentoStatsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  bentoStat: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 4,
-  },
-  bentoValue: {
-    ...typography.h1,
-    color: colors.text,
-    fontVariant: ['tabular-nums'],
-  },
-  bentoLabel: {
-    ...typography.caption,
-    color: colors.textMuted,
-  },
-  bentoDivider: {
-    width: StyleSheet.hairlineWidth,
-    height: 36,
-    backgroundColor: colors.divider,
   },
   todayCard: {
     backgroundColor: colors.surface,
@@ -496,44 +564,6 @@ const styles = StyleSheet.create({
   itemMeta: {
     ...typography.caption,
     color: colors.textSecondary,
-  },
-  quickAskCard: {
-    marginTop: spacing.lg,
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    padding: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  quickAskCopy: {
-    flex: 1,
-    gap: 4,
-  },
-  quickAskTitle: {
-    ...typography.label,
-    color: colors.text,
-    fontWeight: '700',
-  },
-  quickAskDesc: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    lineHeight: 18,
-  },
-  quickAskArrow: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.primaryMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quickAskArrowText: {
-    color: colors.primary,
-    fontSize: 18,
-    fontWeight: '700',
   },
   syncButtonWrap: {
     marginTop: spacing.xl,
