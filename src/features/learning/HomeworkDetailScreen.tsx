@@ -1,6 +1,5 @@
-import React, {useEffect, useMemo, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
-  ActivityIndicator,
   Linking,
   Pressable,
   ScrollView,
@@ -12,7 +11,8 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {useSelector} from 'react-redux';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {colors, radii, shadows, spacing, typography} from '../../app/theme';
-import {Badge, DetailHeader, EmptyState, InfoRow} from '../common/components/Ui';
+import {Badge, DetailHeader, InfoRow} from '../common/components/Ui';
+import {EmptyHint, InlineLoader, StateBlock} from '../common/components/Status';
 import {HtmlContent} from '../common/components/HtmlContent';
 import {selectAuth, selectLearning} from '../../state/selectors';
 import {HomeworkDetail, HomeworkStatus, RemoteFile} from '../../domain/learning';
@@ -50,8 +50,12 @@ export function HomeworkDetailScreen({route, navigation}: Props) {
   const [detail, setDetail] = useState<HomeworkDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const canFetch = Boolean(item && item.url && item.url !== '#' && !demoMode);
+  const retryLoad = useCallback(() => {
+    setReloadKey(value => value + 1);
+  }, []);
 
   useEffect(() => {
     if (!item || !canFetch) {
@@ -79,13 +83,17 @@ export function HomeworkDetailScreen({route, navigation}: Props) {
     return () => {
       mounted = false;
     };
-  }, [item, canFetch]);
+  }, [item, canFetch, reloadKey]);
 
   if (!item) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <DetailHeader title="作业详情" onBack={() => navigation.goBack()} />
-        <EmptyState title="作业信息不存在" />
+        <EmptyHint
+          title="作业信息不存在"
+          message="当前本地快照里没有这条作业，可以返回首页重新同步。"
+          style={styles.fullEmpty}
+        />
       </SafeAreaView>
     );
   }
@@ -124,12 +132,19 @@ export function HomeworkDetailScreen({route, navigation}: Props) {
         </View>
 
         {loading ? (
-          <View style={styles.loadingRow}>
-            <ActivityIndicator color={colors.primary} />
-            <Text style={styles.loadingText}>正在加载作业详情…</Text>
-          </View>
+          <InlineLoader label="正在加载作业详情..." style={styles.statusInline} />
         ) : null}
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {error ? (
+          <StateBlock
+            title="作业详情加载失败"
+            message={error}
+            tone="error"
+            actionLabel="重试"
+            onAction={retryLoad}
+            compact
+            style={styles.statusBlock}
+          />
+        ) : null}
 
         {/* === 作业内容及要求 === */}
         <SectionTitle text="作业内容及要求" />
@@ -309,6 +324,7 @@ function AttachmentField({
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
   content: {padding: spacing.lg, paddingBottom: spacing.xxl},
+  fullEmpty: {flex: 1},
   hero: {
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
@@ -322,18 +338,8 @@ const styles = StyleSheet.create({
   heroRow: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs},
   heroTitle: {...typography.h1, color: colors.text},
   heroMeta: {...typography.caption, color: colors.textSecondary},
-  loadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
-  },
-  loadingText: {...typography.caption, color: colors.textSecondary},
-  errorText: {
-    ...typography.caption,
-    color: colors.error,
-    paddingVertical: spacing.xs,
-  },
+  statusInline: {paddingVertical: spacing.sm},
+  statusBlock: {marginBottom: spacing.sm},
   sectionTitle: {
     ...typography.label,
     color: colors.textSecondary,

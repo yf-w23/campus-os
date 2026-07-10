@@ -1,3 +1,5 @@
+import {ToolRisk} from './actions';
+
 export type AIProviderPreset =
   | 'openai'
   | 'deepseek'
@@ -15,16 +17,43 @@ export interface AIProviderConfig {
 
 export type ChatRole = 'system' | 'user' | 'assistant';
 
+export interface ToolTraceMetric {
+  label: string;
+  value: string;
+  tone?: 'default' | 'success' | 'warning' | 'error';
+}
+
 /** 一次工具调用的记录，用于在对话气泡里可视化 AI 的"动手"过程 */
 export interface ToolTrace {
   /** 工具名（如 book_library_seat）*/
   name: string;
+  /** 工具展示名（如 图书馆座位预约）*/
+  title?: string;
   /** 人类可读的过程描述（如"预约 李文正馆 A 区 12 号座"）*/
   label: string;
+  /** 风险等级，用于在聊天气泡里标识只读/写入/支付等动作 */
+  risk?: ToolRisk;
+  /** 权限键，便于用户确认 AI 使用了哪类校园能力 */
+  permission?: string;
   /** 结果状态 */
   status: 'running' | 'success' | 'error' | 'cancelled';
   /** 结果摘要（成功/失败原因）*/
   detail?: string;
+  /** 结构化结果标题 */
+  resultTitle?: string;
+  /** 结构化结果摘要 */
+  resultSummary?: string;
+  /** 关键数字/状态，用于余额、天气、GPA、座位数等工具结果 */
+  resultMetrics?: ToolTraceMetric[];
+  /** 结构化结果条目预览，最多保留少量真实返回值 */
+  resultItems?: string[];
+  /** 补充说明，如更新时间、数据源或语义提醒 */
+  resultFootnote?: string;
+  /** 只读工具失败时，可用此提示发起重试 */
+  retryPrompt?: string;
+  /** 工具完成后的后续操作提示，例如撤销、复查、打开相关页面 */
+  nextActionLabel?: string;
+  nextActionPrompt?: string;
 }
 
 export interface ChatMessage {

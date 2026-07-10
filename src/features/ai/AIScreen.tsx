@@ -85,26 +85,158 @@ const traceIcon: Record<ToolTrace['status'], string> = {
   cancelled: '⊘',
 };
 
-function ToolTraceList({traces}: {traces: ToolTrace[]}) {
+const traceStatusLabels: Record<ToolTrace['status'], string> = {
+  running: '执行中',
+  success: '成功',
+  error: '失败',
+  cancelled: '已取消',
+};
+
+const traceRiskLabels: Record<NonNullable<ToolTrace['risk']>, string> = {
+  read: '只读',
+  write_reversible: '可撤销',
+  write_irreversible: '不可逆',
+  payment: '支付',
+  credential: '凭证',
+};
+
+function ToolTraceList({
+  traces,
+  onRetry,
+}: {
+  traces: ToolTrace[];
+  onRetry?: (prompt: string) => void;
+}) {
   return (
     <View style={styles.traceWrap}>
-      {traces.map((tr, i) => (
-        <View key={`trace-${i}`} style={styles.traceRow}>
-          <Text
-            style={[
-              styles.traceIcon,
-              tr.status === 'success' && {color: colors.success},
-              tr.status === 'error' && {color: colors.error},
-              tr.status === 'cancelled' && {color: colors.textMuted},
-            ]}>
-            {traceIcon[tr.status]}
-          </Text>
-          <Text style={styles.traceLabel} numberOfLines={2}>
-            {tr.label}
-            {tr.detail ? <Text style={styles.traceDetail}> · {tr.detail}</Text> : null}
-          </Text>
-        </View>
-      ))}
+      {traces.map((tr, i) => {
+        const canRetry = tr.status === 'error' && tr.risk === 'read' && tr.retryPrompt;
+        const canRunNext = tr.status === 'success' && tr.nextActionPrompt;
+        return (
+          <View key={`trace-${i}`} style={styles.traceCard}>
+            <View style={styles.traceTop}>
+              <View style={styles.traceTitleGroup}>
+                <Text
+                  style={[
+                    styles.traceIcon,
+                    tr.status === 'success' && {color: colors.success},
+                    tr.status === 'error' && {color: colors.error},
+                    tr.status === 'cancelled' && {color: colors.textMuted},
+                  ]}>
+                  {traceIcon[tr.status]}
+                </Text>
+                <Text style={styles.traceTitle} numberOfLines={1}>
+                  {tr.title ?? tr.name}
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.traceStatusBadge,
+                  tr.status === 'success' && styles.traceStatusSuccess,
+                  tr.status === 'error' && styles.traceStatusError,
+                  tr.status === 'cancelled' && styles.traceStatusCancelled,
+                ]}>
+                <Text
+                  style={[
+                    styles.traceStatusText,
+                    tr.status === 'success' && styles.traceStatusTextSuccess,
+                    tr.status === 'error' && styles.traceStatusTextError,
+                    tr.status === 'cancelled' && styles.traceStatusTextCancelled,
+                  ]}>
+                  {traceStatusLabels[tr.status]}
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.traceLabel} numberOfLines={2}>
+              {tr.label}
+            </Text>
+
+            <View style={styles.traceMetaRow}>
+              {tr.risk ? (
+                <Text style={styles.traceMetaPill}>{traceRiskLabels[tr.risk]}</Text>
+              ) : null}
+              {tr.permission ? (
+                <Text style={styles.tracePermission} numberOfLines={1}>
+                  {tr.permission}
+                </Text>
+              ) : null}
+            </View>
+
+            {tr.resultSummary ||
+            tr.detail ||
+            tr.resultMetrics?.length ||
+            tr.resultItems?.length ||
+            tr.resultFootnote ||
+            canRunNext ? (
+              <View style={styles.traceResultBox}>
+                <Text style={styles.traceResultTitle}>
+                  {tr.resultTitle ?? '结果'}
+                </Text>
+                {tr.resultMetrics?.length ? (
+                  <View style={styles.traceMetricRow}>
+                    {tr.resultMetrics.slice(0, 3).map(metric => (
+                      <View key={`${metric.label}-${metric.value}`} style={styles.traceMetric}>
+                        <Text
+                          style={[
+                            styles.traceMetricValue,
+                            metric.tone === 'success' && styles.traceMetricSuccess,
+                            metric.tone === 'warning' && styles.traceMetricWarning,
+                            metric.tone === 'error' && styles.traceMetricError,
+                          ]}
+                          numberOfLines={1}>
+                          {metric.value}
+                        </Text>
+                        <Text style={styles.traceMetricLabel} numberOfLines={1}>
+                          {metric.label}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+                {tr.resultSummary || tr.detail ? (
+                  <Text style={styles.traceDetail} numberOfLines={3}>
+                    {tr.resultSummary ?? tr.detail}
+                  </Text>
+                ) : null}
+                {tr.resultItems?.map(item => (
+                  <Text key={item} style={styles.traceResultItem} numberOfLines={1}>
+                    {item}
+                  </Text>
+                ))}
+                {tr.resultFootnote ? (
+                  <Text style={styles.traceFootnote} numberOfLines={2}>
+                    {tr.resultFootnote}
+                  </Text>
+                ) : null}
+                {canRunNext ? (
+                  <Pressable
+                    onPress={() => onRetry?.(tr.nextActionPrompt!)}
+                    style={({pressed}) => [
+                      styles.traceNextButton,
+                      pressed && styles.pressed,
+                    ]}>
+                    <Text style={styles.traceNextText}>
+                      {tr.nextActionLabel ?? '继续处理'}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
+
+            {canRetry ? (
+              <Pressable
+                onPress={() => onRetry?.(tr.retryPrompt!)}
+                style={({pressed}) => [
+                  styles.traceRetryButton,
+                  pressed && styles.pressed,
+                ]}>
+                <Text style={styles.traceRetryText}>重试这个读取工具</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -147,7 +279,15 @@ function buildSuggestions(
   return out.slice(0, 4);
 }
 
-function ChatBubble({message, index}: {message: ChatMessage; index: number}) {
+function ChatBubble({
+  message,
+  index,
+  onRetryTool,
+}: {
+  message: ChatMessage;
+  index: number;
+  onRetryTool?: (prompt: string) => void;
+}) {
   const isUser = message.role === 'user';
 
   if (isUser) {
@@ -176,7 +316,7 @@ function ChatBubble({message, index}: {message: ChatMessage; index: number}) {
         </LinearGradient>
         <View style={styles.aiBody}>
           {message.toolTraces && message.toolTraces.length > 0 ? (
-            <ToolTraceList traces={message.toolTraces} />
+            <ToolTraceList traces={message.toolTraces} onRetry={onRetryTool} />
           ) : null}
           {message.content ? (
             <MarkdownText content={message.content} streaming={message.streaming} />
@@ -238,6 +378,14 @@ export function AIScreen({route, navigation}: AIScreenProps) {
     }
     setInput('');
     sendQuestion(question).catch(() => undefined);
+    listRef.current?.scrollToEnd({animated: true});
+  };
+
+  const retryToolTrace = (prompt: string) => {
+    if (streaming) {
+      return;
+    }
+    sendQuestion(prompt).catch(() => undefined);
     listRef.current?.scrollToEnd({animated: true});
   };
 
@@ -420,7 +568,11 @@ export function AIScreen({route, navigation}: AIScreenProps) {
             keyExtractor={item => item.id}
             contentContainerStyle={styles.list}
             renderItem={({item, index}) => (
-              <ChatBubble message={item} index={index} />
+              <ChatBubble
+                message={item}
+                index={index}
+                onRetryTool={retryToolTrace}
+              />
             )}
             onContentSizeChange={() =>
               listRef.current?.scrollToEnd({animated: true})
@@ -729,17 +881,26 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   traceWrap: {
-    gap: 4,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: spacing.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
+    gap: spacing.sm,
   },
-  traceRow: {
+  traceCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    padding: spacing.sm + 2,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    gap: spacing.xs,
+  },
+  traceTop: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  traceTitleGroup: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 6,
   },
   traceIcon: {
@@ -748,13 +909,133 @@ const styles = StyleSheet.create({
     width: 14,
     textAlign: 'center',
   },
-  traceLabel: {
-    ...typography.micro,
-    color: colors.textSecondary,
+  traceTitle: {
+    ...typography.caption,
+    color: colors.text,
+    fontWeight: '700',
     flex: 1,
   },
-  traceDetail: {
+  traceStatusBadge: {
+    borderRadius: radii.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: colors.primaryMuted,
+  },
+  traceStatusSuccess: {backgroundColor: colors.successMuted},
+  traceStatusError: {backgroundColor: colors.errorMuted},
+  traceStatusCancelled: {backgroundColor: colors.warningMuted},
+  traceStatusText: {
+    ...typography.micro,
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  traceStatusTextSuccess: {color: colors.success},
+  traceStatusTextError: {color: colors.error},
+  traceStatusTextCancelled: {color: colors.warning},
+  traceLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  traceMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  traceMetaPill: {
+    ...typography.micro,
+    color: colors.primary,
+    backgroundColor: colors.primaryMuted,
+    borderRadius: radii.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    overflow: 'hidden',
+  },
+  tracePermission: {
+    ...typography.micro,
     color: colors.textMuted,
+    flex: 1,
+  },
+  traceResultBox: {
+    marginTop: 2,
+    borderRadius: radii.sm,
+    backgroundColor: colors.surfaceAlt,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    gap: 3,
+  },
+  traceResultTitle: {
+    ...typography.micro,
+    color: colors.textMuted,
+    fontWeight: '700',
+  },
+  traceMetricRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginBottom: 2,
+  },
+  traceMetric: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: radii.sm,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
+  },
+  traceMetricValue: {
+    ...typography.label,
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  traceMetricSuccess: {color: colors.success},
+  traceMetricWarning: {color: colors.warning},
+  traceMetricError: {color: colors.error},
+  traceMetricLabel: {
+    ...typography.micro,
+    color: colors.textMuted,
+    marginTop: 1,
+  },
+  traceDetail: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  traceResultItem: {
+    ...typography.micro,
+    color: colors.text,
+  },
+  traceFootnote: {
+    ...typography.micro,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  traceNextButton: {
+    alignSelf: 'flex-start',
+    borderRadius: radii.pill,
+    backgroundColor: colors.primaryMuted,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 5,
+    marginTop: 3,
+  },
+  traceNextText: {
+    ...typography.micro,
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  traceRetryButton: {
+    alignSelf: 'flex-start',
+    borderRadius: radii.pill,
+    backgroundColor: colors.surfaceAlt,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 5,
+    marginTop: 2,
+  },
+  traceRetryText: {
+    ...typography.micro,
+    color: colors.primary,
+    fontWeight: '700',
   },
   agentStatusRow: {
     flexDirection: 'row',

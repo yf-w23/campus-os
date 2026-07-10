@@ -12,7 +12,6 @@
  */
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
-  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,7 +21,8 @@ import {
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {colors, radii, spacing, typography} from '../../app/theme';
-import {DetailHeader, EmptyState} from '../common/components/Ui';
+import {DetailHeader} from '../common/components/Ui';
+import {EmptyHint, InlineLoader, StateBlock} from '../common/components/Status';
 import {RootStackParamList} from '../../app/navigation/types';
 import {
   BuildingEntry,
@@ -99,6 +99,7 @@ export function ClassroomScreen({navigation}: Props) {
   const [state, setState] = useState<ClassroomStateResult | null>(null);
   const [stateLoading, setStateLoading] = useState(false);
   const [stateError, setStateError] = useState<string | null>(null);
+  const [stateReloadKey, setStateReloadKey] = useState(0);
   const [activeDay, setActiveDay] = useState(todayWeekdayIndex());
 
   const loadList = useCallback(async () => {
@@ -142,7 +143,7 @@ export function ClassroomScreen({navigation}: Props) {
     return () => {
       cancelled = true;
     };
-  }, [selected, week]);
+  }, [selected, stateReloadKey, week]);
 
   /** 当前日某教室是否完全空闲 — 用固定 PERIODS_PER_DAY，与上游 status 数组约定一致 */
   const summary = useMemo(() => {
@@ -174,17 +175,17 @@ export function ClassroomScreen({navigation}: Props) {
       />
 
       {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.dim}>正在加载教学楼列表…</Text>
-        </View>
+        <InlineLoader label="正在加载教学楼列表..." style={styles.center} />
       ) : error ? (
         <View style={styles.center}>
-          <Text style={styles.errTitle}>加载失败</Text>
-          <Text style={styles.dim}>{error}</Text>
-          <Pressable style={styles.retry} onPress={loadList}>
-            <Text style={styles.retryText}>重试</Text>
-          </Pressable>
+          <StateBlock
+            title="教学楼列表加载失败"
+            message={error}
+            tone="error"
+            actionLabel="重试"
+            onAction={loadList}
+            style={styles.statusBlock}
+          />
         </View>
       ) : (
         <View style={{flex: 1}}>
@@ -291,22 +292,24 @@ export function ClassroomScreen({navigation}: Props) {
           ) : null}
 
           {stateLoading ? (
-            <View style={styles.center}>
-              <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.dim}>加载教室状态…</Text>
-            </View>
+            <InlineLoader label="加载教室状态..." style={styles.center} />
           ) : stateError ? (
             <View style={styles.center}>
-              <Text style={styles.errTitle}>加载失败</Text>
-              <Text style={styles.dim}>{stateError}</Text>
-              <Pressable
-                style={styles.retry}
-                onPress={() => selected && week != null && setWeek(week)}>
-                <Text style={styles.retryText}>重试</Text>
-              </Pressable>
+              <StateBlock
+                title="教室状态加载失败"
+                message={stateError}
+                tone="error"
+                actionLabel="重试"
+                onAction={() => setStateReloadKey(value => value + 1)}
+                style={styles.statusBlock}
+              />
             </View>
           ) : !state || state.classroomStates.length === 0 ? (
-            <EmptyState title="该教学楼无教室数据" />
+            <EmptyHint
+              title="该教学楼无教室数据"
+              message="可以切换其它教学楼、周次或稍后刷新。"
+              style={styles.center}
+            />
           ) : (
             <ScrollView contentContainerStyle={styles.tableWrap}>
               <View style={styles.legend}>
@@ -413,20 +416,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.lg,
   },
-  dim: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  errTitle: {...typography.h3, color: colors.error},
-  retry: {
-    marginTop: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.primary,
-    borderRadius: radii.md,
-  },
-  retryText: {...typography.label, color: colors.textInvert},
+  statusBlock: {alignSelf: 'stretch'},
 
   buildingScroll: {flexGrow: 0, flexShrink: 0},
   buildingRow: {

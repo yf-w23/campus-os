@@ -1,6 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
-  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,8 +10,8 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {colors, radii, spacing, typography} from '../../app/theme';
 import {RootStackParamList} from '../../app/navigation/types';
-import {DetailHeader} from '../common/components/Ui';
-import {PrimaryButton} from '../common/components/Buttons';
+import {DetailHeader, MetricPill} from '../common/components/Ui';
+import {EmptyHint, InlineLoader, StateBlock} from '../common/components/Status';
 import {
   LaundryFloor,
   LaundryMachine,
@@ -54,23 +53,6 @@ function machineStatusLabel(machine: LaundryMachine): string {
     return `剩余 ${machine.etaMinutes} 分钟`;
   }
   return statusMeta[machine.status].label;
-}
-
-function StatPill({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: number;
-  tone: string;
-}) {
-  return (
-    <View style={styles.statPill}>
-      <Text style={[styles.statValue, {color: tone}]}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
 }
 
 function MachineCard({machine}: {machine: LaundryMachine}) {
@@ -154,32 +136,37 @@ export function CampusLaundryDetailScreen({navigation, route}: Props) {
           </Text>
           <Text style={styles.summaryTitle}>{building.name}</Text>
           <View style={styles.statsRow}>
-            <StatPill label="空闲" value={stats.idle} tone={colors.success} />
-            <StatPill
+            <MetricPill label="空闲" value={stats.idle} tone={colors.success} />
+            <MetricPill
               label="运行"
               value={stats.working}
               tone={colors.textSecondary}
             />
-            <StatPill label="异常" value={stats.error} tone={colors.error} />
+            <MetricPill label="异常" value={stats.error} tone={colors.error} />
           </View>
         </View>
 
         {error ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
-            <PrimaryButton label="重试" onPress={load} variant="ghost" />
-          </View>
+          <StateBlock
+            title="洗衣机状态加载失败"
+            message={error}
+            tone="error"
+            actionLabel="重试"
+            onAction={load}
+            style={styles.statusBlock}
+          />
         ) : null}
 
         {loading ? (
-          <ActivityIndicator color={colors.primary} style={styles.loader} />
+          <InlineLoader label="正在读取设备状态" style={styles.loader} />
         ) : null}
 
         {!loading && !error && stats.total === 0 ? (
-          <View style={styles.emptyBox}>
-            <Text style={styles.emptyTitle}>暂无设备状态</Text>
-            <Text style={styles.emptyText}>可以稍后刷新，或换一个楼宇查看。</Text>
-          </View>
+          <EmptyHint
+            title="暂无设备状态"
+            message="可以稍后刷新，或换一个楼宇查看。"
+            style={styles.empty}
+          />
         ) : null}
 
         {!loading &&
@@ -228,31 +215,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.sm,
   },
-  statPill: {
-    flex: 1,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radii.md,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-    gap: 2,
-  },
-  statValue: {fontSize: 20, lineHeight: 24, fontWeight: '700'},
-  statLabel: {...typography.micro, color: colors.textMuted},
-  errorBox: {
-    marginTop: spacing.md,
-    padding: spacing.md,
-    backgroundColor: colors.errorMuted,
-    borderRadius: radii.md,
-    gap: spacing.sm,
-  },
-  errorText: {...typography.caption, color: colors.error},
-  emptyBox: {
-    alignItems: 'center',
-    paddingVertical: spacing.xxl,
-    gap: spacing.xs,
-  },
-  emptyTitle: {...typography.body, color: colors.textSecondary},
-  emptyText: {...typography.caption, color: colors.textMuted},
+  statusBlock: {marginTop: spacing.md},
+  empty: {marginTop: spacing.xl},
   floorSection: {marginTop: spacing.lg},
   sectionTitle: {
     ...typography.label,

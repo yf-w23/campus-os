@@ -1,6 +1,5 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Linking,
   Pressable,
@@ -13,9 +12,10 @@ import {
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {colors, radii, spacing, typography} from '../../app/theme';
-import {DetailHeader, InfoRow} from '../common/components/Ui';
+import {DetailHeader, HeroMetricCard, InfoRow, SurfaceGroup} from '../common/components/Ui';
 import {PrimaryButton} from '../common/components/Buttons';
 import {Chip} from '../common/components/Chip';
+import {EmptyHint, InlineLoader, StateBlock} from '../common/components/Status';
 import {RootStackParamList} from '../../app/navigation/types';
 import {
   CampusCardInfo,
@@ -131,38 +131,34 @@ export function CampusFinanceScreen({navigation}: Props) {
         onRight={load}
       />
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.hero}>
-          <Text style={styles.heroLabel}>校园卡余额</Text>
-          {loading ? (
-            <ActivityIndicator color={colors.primary} style={styles.loader} />
-          ) : error ? (
-            <Text style={styles.heroError}>加载失败</Text>
-          ) : (
-            <View style={styles.heroValueRow}>
-              <Text style={styles.heroValue}>
-                {info ? info.balance.toFixed(2) : '—'}
-              </Text>
-              <Text style={styles.heroUnit}>元</Text>
-            </View>
-          )}
-          {info?.lastTransactionTimestamp ? (
-            <Text style={styles.heroTime}>
-              最近交易 {formatDate(info.lastTransactionTimestamp)}
-            </Text>
-          ) : null}
-        </View>
+        <HeroMetricCard
+          label="校园卡余额"
+          loading={loading}
+          error={Boolean(error)}
+          value={info ? info.balance.toFixed(2) : '—'}
+          unit="元"
+          footer={
+            info?.lastTransactionTimestamp
+              ? `最近交易 ${formatDate(info.lastTransactionTimestamp)}`
+              : undefined
+          }
+        />
 
         {error ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
-            <PrimaryButton label="重试" onPress={load} variant="ghost" />
-          </View>
+          <StateBlock
+            title="校园财务加载失败"
+            message={error}
+            tone="error"
+            actionLabel="重试"
+            onAction={load}
+            style={styles.statusBlock}
+          />
         ) : null}
 
         {info ? (
           <>
             <Text style={styles.sectionTitle}>校园卡信息</Text>
-            <View style={styles.card}>
+            <SurfaceGroup>
               <InfoRow label="姓名" value={info.userName || '—'} />
               <InfoRow label="院系" value={info.departmentName || '—'} />
               <InfoRow label="卡号" value={mask(info.cardId)} mono />
@@ -180,19 +176,22 @@ export function CampusFinanceScreen({navigation}: Props) {
                 value={
                   info.maxDailyTransactionAmount != null
                     ? `${info.maxDailyTransactionAmount.toFixed(2)} 元`
-                    : '—'
+                  : '—'
                 }
               />
-            </View>
+            </SurfaceGroup>
           </>
         ) : null}
 
         <Text style={styles.sectionTitle}>近 7 天流水</Text>
-        <View style={styles.card}>
+        <SurfaceGroup>
           {loading ? (
-            <ActivityIndicator color={colors.primary} style={styles.inlineLoader} />
+            <InlineLoader label="正在读取近期流水" />
           ) : transactions.length === 0 ? (
-            <Text style={styles.emptyText}>暂无近期流水</Text>
+            <EmptyHint
+              title="暂无近期流水"
+              message="近 7 天没有查询到校园卡交易记录。"
+            />
           ) : (
             transactions.slice(0, 30).map((item, index) => (
               <View
@@ -218,10 +217,10 @@ export function CampusFinanceScreen({navigation}: Props) {
               </View>
             ))
           )}
-        </View>
+        </SurfaceGroup>
 
         <Text style={styles.sectionTitle}>校园卡充值</Text>
-        <View style={styles.card}>
+        <SurfaceGroup>
           <View style={styles.rechargeQuickRow}>
             {quickAmounts.map(amount => (
               <Chip
@@ -256,7 +255,7 @@ export function CampusFinanceScreen({navigation}: Props) {
             loading={recharging}
             variant="primary"
           />
-        </View>
+        </SurfaceGroup>
 
         <Pressable
           onPress={() => navigation.navigate('CampusEleBalance')}
@@ -275,32 +274,9 @@ export function CampusFinanceScreen({navigation}: Props) {
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
   content: {padding: spacing.lg, paddingBottom: spacing.xxl},
-  loader: {marginVertical: 12},
-  inlineLoader: {marginVertical: spacing.md},
-  hero: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    paddingVertical: spacing.xl,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  heroLabel: {...typography.caption, color: colors.textMuted},
-  heroValueRow: {flexDirection: 'row', alignItems: 'baseline', gap: 6},
-  heroValue: {fontSize: 44, fontWeight: '700', color: colors.primary},
-  heroUnit: {...typography.body, color: colors.textSecondary},
-  heroError: {...typography.h3, color: colors.error, marginVertical: 8},
-  heroTime: {...typography.micro, color: colors.textMuted, marginTop: 4},
-  errorBox: {
+  statusBlock: {
     marginTop: spacing.md,
-    padding: spacing.md,
-    backgroundColor: colors.errorMuted,
-    borderRadius: radii.md,
-    gap: spacing.sm,
   },
-  errorText: {...typography.caption, color: colors.error},
   sectionTitle: {
     ...typography.label,
     color: colors.textSecondary,
@@ -310,20 +286,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
     paddingLeft: spacing.xs,
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xs,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  emptyText: {
-    ...typography.body,
-    color: colors.textMuted,
-    textAlign: 'center',
-    paddingVertical: spacing.lg,
   },
   txRow: {paddingVertical: spacing.md - 2, gap: 4},
   divider: {

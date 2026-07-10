@@ -8,7 +8,6 @@
  */
 import React, {useCallback, useEffect, useState} from 'react';
 import {
-  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,7 +17,8 @@ import {
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {colors, radii, shadows, spacing, typography} from '../../app/theme';
-import {Badge, DetailHeader, EmptyState} from '../common/components/Ui';
+import {Badge, DetailHeader, SegmentedControl} from '../common/components/Ui';
+import {EmptyHint, InlineLoader, StateBlock} from '../common/components/Status';
 import {RootStackParamList} from '../../app/navigation/types';
 import {
   DateChoice,
@@ -47,26 +47,15 @@ export function LibraryNativeScreen({navigation}: Props) {
         title="图书馆与研读间"
         onBack={() => navigation.goBack()}
       />
-      <View style={styles.tabs}>
-        {(
-          [
-            ['seats', '座位查询'],
-            ['rooms', '研读间'],
-          ] as [Tab, string][]
-        ).map(([key, label]) => {
-          const active = key === tab;
-          return (
-            <Pressable
-              key={key}
-              style={[styles.tab, active && styles.tabActive]}
-              onPress={() => setTab(key)}>
-              <Text style={[styles.tabText, active && styles.tabTextActive]}>
-                {label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <SegmentedControl<Tab>
+        value={tab}
+        onChange={setTab}
+        options={[
+          {value: 'seats', label: '座位查询'},
+          {value: 'rooms', label: '研读间'},
+        ]}
+        style={styles.tabs}
+      />
 
       {tab === 'seats' ? (
         <SeatsView navigation={navigation} />
@@ -91,6 +80,7 @@ function SeatsView({navigation}: {navigation: Props['navigation']}) {
   const [floorsLoading, setFloorsLoading] = useState(false);
   const [floors, setFloors] = useState<LibraryFloor[]>([]);
   const [floorError, setFloorError] = useState<string | null>(null);
+  const [floorReloadKey, setFloorReloadKey] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -133,52 +123,48 @@ function SeatsView({navigation}: {navigation: Props['navigation']}) {
     return () => {
       cancelled = true;
     };
-  }, [activeLib, dateChoice]);
+  }, [activeLib, dateChoice, floorReloadKey]);
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.hint}>正在加载图书馆列表…</Text>
-      </View>
+      <InlineLoader label="正在加载图书馆列表..." style={styles.center} />
     );
   }
   if (error) {
     return (
       <View style={styles.center}>
-        <Text style={styles.errorTitle}>加载失败</Text>
-        <Text style={styles.errorMsg}>{error}</Text>
-        <Pressable style={styles.retry} onPress={load}>
-          <Text style={styles.retryText}>重试</Text>
-        </Pressable>
+        <StateBlock
+          title="图书馆列表加载失败"
+          message={error}
+          tone="error"
+          actionLabel="重试"
+          onAction={load}
+          style={styles.statusBlock}
+        />
       </View>
     );
   }
   if (libraries.length === 0) {
-    return <EmptyState title="暂无图书馆" description="接口未返回数据" />;
+    return (
+      <EmptyHint
+        title="暂无图书馆"
+        message="接口未返回可用图书馆数据，可以稍后刷新。"
+        style={styles.center}
+      />
+    );
   }
 
   return (
     <ScrollView contentContainerStyle={{paddingBottom: spacing.xxl}}>
-      <View style={styles.dateRow}>
-        {(['今天', '明天'] as const).map((label, idx) => {
-          const active = (idx as DateChoice) === dateChoice;
-          return (
-            <Pressable
-              key={label}
-              style={[styles.dateChip, active && styles.dateChipActive]}
-              onPress={() => setDateChoice(idx as DateChoice)}>
-              <Text
-                style={[
-                  styles.dateChipText,
-                  active && styles.dateChipTextActive,
-                ]}>
-                {label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <SegmentedControl<DateChoice>
+        value={dateChoice}
+        onChange={setDateChoice}
+        options={[
+          {value: 0 as DateChoice, label: '今天'},
+          {value: 1 as DateChoice, label: '明天'},
+        ]}
+        style={styles.dateRow}
+      />
 
       <ScrollView
         horizontal
@@ -215,16 +201,23 @@ function SeatsView({navigation}: {navigation: Props['navigation']}) {
 
       <View style={{paddingHorizontal: spacing.lg}}>
         {floorsLoading ? (
-          <View style={styles.inlineLoader}>
-            <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={styles.hint}>读取楼层使用率…</Text>
-          </View>
+          <InlineLoader label="读取楼层使用率..." style={styles.inlineLoader} />
         ) : floorError ? (
-          <View style={styles.inlineError}>
-            <Text style={styles.errorMsg}>{floorError}</Text>
-          </View>
+          <StateBlock
+            title="楼层使用率加载失败"
+            message={floorError}
+            tone="error"
+            actionLabel="重试"
+            onAction={() => setFloorReloadKey(value => value + 1)}
+            compact
+            style={styles.inlineStatus}
+          />
         ) : floors.length === 0 ? (
-          <EmptyState title="无楼层数据" description="该馆暂无开放楼层" />
+          <EmptyHint
+            title="无楼层数据"
+            message="该馆暂无开放楼层，或当前日期没有可查询区域。"
+            style={styles.inlineStatus}
+          />
         ) : (
           floors.map(floor => (
             <FloorCard
@@ -369,20 +362,20 @@ function RoomsView() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.hint}>正在激活研读间会话…</Text>
-      </View>
+      <InlineLoader label="正在激活研读间会话..." style={styles.center} />
     );
   }
   if (error && kinds.length === 0) {
     return (
       <View style={styles.center}>
-        <Text style={styles.errorTitle}>加载失败</Text>
-        <Text style={styles.errorMsg}>{error}</Text>
-        <Pressable style={styles.retry} onPress={loadKinds}>
-          <Text style={styles.retryText}>重试</Text>
-        </Pressable>
+        <StateBlock
+          title="研读间类型加载失败"
+          message={error}
+          tone="error"
+          actionLabel="重试"
+          onAction={loadKinds}
+          style={styles.statusBlock}
+        />
       </View>
     );
   }
@@ -394,7 +387,10 @@ function RoomsView() {
       <Text style={styles.groupTitle}>研读间类型</Text>
       {kinds.length === 0 ? (
         <View style={{paddingHorizontal: spacing.lg}}>
-          <EmptyState title="无研读间类型" description="接口未返回数据" />
+          <EmptyHint
+            title="无研读间类型"
+            message="接口未返回研读间类型数据，可以稍后刷新。"
+          />
         </View>
       ) : (
         <View style={{paddingHorizontal: spacing.lg, gap: spacing.sm}}>
@@ -436,9 +432,7 @@ function RoomsView() {
       )}
 
       {resLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
+        <InlineLoader label="正在读取研读间资源..." style={styles.inlineLoader} />
       ) : null}
 
       {resources.length > 0 ? (
@@ -479,9 +473,14 @@ function RoomsView() {
       ) : null}
 
       {error && kinds.length > 0 ? (
-        <Text style={[styles.errorMsg, {paddingHorizontal: spacing.lg}]}>
-          {error}
-        </Text>
+        <View style={{paddingHorizontal: spacing.lg}}>
+          <StateBlock
+            title="研读间资源加载失败"
+            message={error}
+            tone="error"
+            compact
+          />
+        </View>
       ) : null}
 
       <Text style={styles.footer}>
@@ -499,40 +498,14 @@ function RoomsView() {
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
   tabs: {
-    flexDirection: 'row',
-    padding: 4,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radii.md,
     marginHorizontal: spacing.lg,
     marginTop: spacing.md,
   },
-  tab: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-    borderRadius: radii.sm,
-  },
-  tabActive: {backgroundColor: colors.surface},
-  tabText: {...typography.caption, color: colors.textSecondary},
-  tabTextActive: {color: colors.text, fontWeight: '600'},
 
   dateRow: {
-    flexDirection: 'row',
-    padding: 4,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radii.md,
     marginHorizontal: spacing.lg,
     marginTop: spacing.md,
   },
-  dateChip: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-    borderRadius: radii.sm,
-  },
-  dateChipActive: {backgroundColor: colors.surface},
-  dateChipText: {...typography.caption, color: colors.textSecondary},
-  dateChipTextActive: {color: colors.text, fontWeight: '600'},
 
   libRow: {
     paddingHorizontal: spacing.lg,
@@ -623,26 +596,10 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   inlineLoader: {
-    alignItems: 'center',
-    gap: spacing.xs,
     paddingVertical: spacing.lg,
   },
-  inlineError: {paddingVertical: spacing.md, alignItems: 'center'},
-  hint: {...typography.caption, color: colors.textSecondary},
-  errorTitle: {...typography.h3, color: colors.error},
-  errorMsg: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  retry: {
-    marginTop: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.primary,
-    borderRadius: radii.md,
-  },
-  retryText: {...typography.label, color: colors.textInvert},
+  statusBlock: {alignSelf: 'stretch'},
+  inlineStatus: {marginBottom: spacing.sm},
   libDateRow: {
     flexDirection: 'row',
     alignItems: 'center',

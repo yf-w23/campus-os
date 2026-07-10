@@ -1,9 +1,10 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {ScrollView, StyleSheet, Text, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {colors, radii, shadows, spacing, typography} from '../../app/theme';
-import {DetailHeader, EmptyState} from '../common/components/Ui';
+import {DetailHeader} from '../common/components/Ui';
+import {EmptyHint, InlineLoader, StateBlock} from '../common/components/Status';
 import {RootStackParamList} from '../../app/navigation/types';
 import {fetchPEResult, PEItem} from '../../services/campus/petest';
 
@@ -46,20 +47,24 @@ export function PEtestScreen({navigation}: Props) {
         onRight={() => !loading && load()}
       />
       {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.dim}>正在加载体测成绩…</Text>
-        </View>
+        <InlineLoader label="正在加载体测成绩..." style={styles.center} />
       ) : error ? (
         <View style={styles.center}>
-          <Text style={styles.errTitle}>加载失败</Text>
-          <Text style={styles.dim}>{error}</Text>
-          <Pressable style={styles.retry} onPress={load}>
-            <Text style={styles.retryText}>重试</Text>
-          </Pressable>
+          <StateBlock
+            title="体测成绩加载失败"
+            message={error}
+            tone="error"
+            actionLabel="重试"
+            onAction={load}
+            style={styles.statusBlock}
+          />
         </View>
       ) : items.length === 0 ? (
-        <EmptyState title="暂无体测数据" />
+        <EmptyHint
+          title="暂无体测数据"
+          message="教务系统暂未返回体测记录，可以稍后刷新。"
+          style={styles.center}
+        />
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
           {summary.length > 0 ? (
@@ -100,16 +105,7 @@ function isNumericScore(it: PEItem): boolean {
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
   center: {flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.lg},
-  dim: {...typography.caption, color: colors.textSecondary, textAlign: 'center'},
-  errTitle: {...typography.h3, color: colors.error},
-  retry: {
-    marginTop: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.primary,
-    borderRadius: radii.md,
-  },
-  retryText: {...typography.label, color: colors.textInvert},
+  statusBlock: {alignSelf: 'stretch'},
   content: {padding: spacing.lg, paddingBottom: spacing.xxl},
   section: {
     backgroundColor: colors.surface,

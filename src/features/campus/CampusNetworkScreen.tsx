@@ -13,8 +13,9 @@ import {
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {colors, radii, spacing, typography} from '../../app/theme';
-import {DetailHeader, InfoRow} from '../common/components/Ui';
+import {DetailHeader, HeroMetricCard, InfoRow, SurfaceGroup} from '../common/components/Ui';
 import {PrimaryButton} from '../common/components/Buttons';
+import {EmptyHint, InlineLoader, StateBlock} from '../common/components/Status';
 import {RootStackParamList} from '../../app/navigation/types';
 import {
   NetworkAccountInfo,
@@ -199,28 +200,23 @@ export function CampusNetworkScreen({navigation}: Props) {
         onRight={load}
       />
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.hero}>
-          <Text style={styles.heroLabel}>账户余额</Text>
-          {loading ? (
-            <ActivityIndicator color={colors.primary} style={styles.loader} />
-          ) : error ? (
-            <Text style={styles.heroError}>加载失败</Text>
-          ) : (
-            <View style={styles.heroValueRow}>
-              <Text style={styles.heroValue}>
-                {balance?.accountBalance || '—'}
-              </Text>
-              <Text style={styles.heroUnit}>元</Text>
-            </View>
-          )}
-          {balance?.settlementDate ? (
-            <Text style={styles.heroTime}>结算日 {balance.settlementDate}</Text>
-          ) : null}
-        </View>
+        <HeroMetricCard
+          label="账户余额"
+          loading={loading}
+          error={Boolean(error)}
+          value={balance?.accountBalance || '—'}
+          unit="元"
+          footer={balance?.settlementDate ? `结算日 ${balance.settlementDate}` : undefined}
+        />
 
         {error ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
+          <StateBlock
+            title={captchaRequired ? '校园网需要验证码' : '校园网信息加载失败'}
+            message={error}
+            tone={captchaRequired ? 'warning' : 'error'}
+            actionLabel={captchaRequired ? undefined : '重试'}
+            onAction={captchaRequired ? undefined : load}
+            style={styles.statusBlock}>
             {captchaRequired ? (
               <View style={styles.captchaBox}>
                 <View style={styles.captchaRow}>
@@ -260,43 +256,44 @@ export function CampusNetworkScreen({navigation}: Props) {
                   disabled={captchaSubmitting || !captchaInput.trim()}
                 />
               </View>
-            ) : (
-              <PrimaryButton label="重试" onPress={load} variant="ghost" />
-            )}
-          </View>
+            ) : null}
+          </StateBlock>
         ) : null}
 
         {balance ? (
           <>
             <Text style={styles.sectionTitle}>使用情况</Text>
-            <View style={styles.card}>
+            <SurfaceGroup>
               <InfoRow label="套餐" value={balance.productName || '—'} />
               <InfoRow label="已用流量" value={balance.usedBytes || '—'} />
               <InfoRow label="已用时长" value={balance.usedSeconds || '—'} />
-            </View>
+            </SurfaceGroup>
           </>
         ) : null}
 
         {account ? (
           <>
             <Text style={styles.sectionTitle}>账号信息</Text>
-            <View style={styles.card}>
+            <SurfaceGroup>
               <InfoRow label="状态" value={account.status || '—'} />
               <InfoRow label="用户组" value={account.userGroup || '—'} />
               <InfoRow label="允许设备" value={`${account.allowedDevices}`} />
               <InfoRow label="用户名" value={mask(account.username)} mono />
               <InfoRow label="邮箱" value={mask(account.contactEmail)} />
               <InfoRow label="手机号" value={mask(account.contactPhone)} />
-            </View>
+            </SurfaceGroup>
           </>
         ) : null}
 
         <Text style={styles.sectionTitle}>在线设备</Text>
-        <View style={styles.card}>
+        <SurfaceGroup>
           {loading ? (
-            <ActivityIndicator color={colors.primary} style={styles.inlineLoader} />
+            <InlineLoader label="正在读取在线设备" />
           ) : devices.length === 0 ? (
-            <Text style={styles.emptyText}>暂无在线设备</Text>
+            <EmptyHint
+              title="暂无在线设备"
+              message="当前账号没有查询到在线设备。"
+            />
           ) : (
             devices.map((device, index) => (
               <View
@@ -326,7 +323,7 @@ export function CampusNetworkScreen({navigation}: Props) {
               </View>
             ))
           )}
-        </View>
+        </SurfaceGroup>
       </ScrollView>
     </SafeAreaView>
   );
@@ -335,32 +332,7 @@ export function CampusNetworkScreen({navigation}: Props) {
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
   content: {padding: spacing.lg, paddingBottom: spacing.xxl},
-  loader: {marginVertical: 12},
-  inlineLoader: {marginVertical: spacing.md},
-  hero: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    paddingVertical: spacing.xl,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  heroLabel: {...typography.caption, color: colors.textMuted},
-  heroValueRow: {flexDirection: 'row', alignItems: 'baseline', gap: 6},
-  heroValue: {fontSize: 44, fontWeight: '700', color: colors.primary},
-  heroUnit: {...typography.body, color: colors.textSecondary},
-  heroError: {...typography.h3, color: colors.error, marginVertical: 8},
-  heroTime: {...typography.micro, color: colors.textMuted, marginTop: 4},
-  errorBox: {
-    marginTop: spacing.md,
-    padding: spacing.md,
-    backgroundColor: colors.errorMuted,
-    borderRadius: radii.md,
-    gap: spacing.sm,
-  },
-  errorText: {...typography.caption, color: colors.error},
+  statusBlock: {marginTop: spacing.md},
   captchaBox: {gap: spacing.sm},
   captchaRow: {
     flexDirection: 'row',
@@ -401,20 +373,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
     paddingLeft: spacing.xs,
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xs,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  emptyText: {
-    ...typography.body,
-    color: colors.textMuted,
-    textAlign: 'center',
-    paddingVertical: spacing.lg,
   },
   divider: {
     borderTopWidth: StyleSheet.hairlineWidth,

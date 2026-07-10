@@ -1,5 +1,14 @@
 import React from 'react';
-import {Pressable, StyleSheet, Text, TextStyle, View, ViewStyle} from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleProp,
+  StyleSheet,
+  Text,
+  TextStyle,
+  View,
+  ViewStyle,
+} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import {colors, radii, spacing, typography} from '../../../app/theme';
 
@@ -83,17 +92,191 @@ export function Badge({label, tone = 'default'}: BadgeProps) {
   return <Text style={[styles.badge, badgeMap[tone]]}>{label}</Text>;
 }
 
-interface EmptyStateProps {
-  title: string;
-  description?: string;
+interface HeroMetricCardProps {
+  label: string;
+  value?: string | number | null;
+  unit?: string;
+  footer?: string | null;
+  loading?: boolean;
+  error?: boolean;
+  errorLabel?: string;
+  style?: StyleProp<ViewStyle>;
 }
 
-export function EmptyState({title, description}: EmptyStateProps) {
+export function HeroMetricCard({
+  label,
+  value,
+  unit,
+  footer,
+  loading,
+  error,
+  errorLabel = '加载失败',
+  style,
+}: HeroMetricCardProps) {
   return (
-    <View style={styles.emptyWrap}>
-      <Text style={styles.emptyTitle}>{title}</Text>
-      {description ? <Text style={styles.emptyDesc}>{description}</Text> : null}
+    <View style={[styles.heroMetric, style]}>
+      <Text style={styles.heroMetricLabel}>{label}</Text>
+      {loading ? (
+        <ActivityIndicator color={colors.primary} style={styles.heroMetricLoader} />
+      ) : error ? (
+        <Text style={styles.heroMetricError}>{errorLabel}</Text>
+      ) : (
+        <View style={styles.heroMetricValueRow}>
+          <Text style={styles.heroMetricValue}>{value ?? '—'}</Text>
+          {unit ? <Text style={styles.heroMetricUnit}>{unit}</Text> : null}
+        </View>
+      )}
+      {footer ? <Text style={styles.heroMetricFooter}>{footer}</Text> : null}
     </View>
+  );
+}
+
+interface SegmentedControlOption<T extends string | number> {
+  value: T;
+  label: string;
+  count?: number;
+  disabled?: boolean;
+}
+
+interface SegmentedControlProps<T extends string | number> {
+  options: readonly SegmentedControlOption<T>[];
+  value: T;
+  onChange: (value: T) => void;
+  style?: StyleProp<ViewStyle>;
+}
+
+export function SegmentedControl<T extends string | number>({
+  options,
+  value,
+  onChange,
+  style,
+}: SegmentedControlProps<T>) {
+  return (
+    <View style={[styles.segmented, style]}>
+      {options.map(option => {
+        const active = option.value === value;
+        return (
+          <Pressable
+            key={String(option.value)}
+            disabled={option.disabled}
+            onPress={() => onChange(option.value)}
+            style={({pressed}) => [
+              styles.segmentedItem,
+              active && styles.segmentedItemActive,
+              pressed && !active && styles.segmentedItemPressed,
+              option.disabled && styles.segmentedItemDisabled,
+            ]}>
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.segmentedText,
+                active && styles.segmentedTextActive,
+                option.disabled && styles.segmentedTextDisabled,
+              ]}>
+              {option.label}
+            </Text>
+            {option.count != null ? (
+              <Text
+                style={[
+                  styles.segmentedCount,
+                  active && styles.segmentedCountActive,
+                  option.disabled && styles.segmentedTextDisabled,
+                ]}>
+                {option.count}
+              </Text>
+            ) : null}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+interface MetricPillProps {
+  label: string;
+  value: string | number;
+  tone?: string;
+  helper?: string;
+  style?: StyleProp<ViewStyle>;
+}
+
+export function MetricPill({
+  label,
+  value,
+  tone = colors.primary,
+  helper,
+  style,
+}: MetricPillProps) {
+  return (
+    <View style={[styles.metricPill, style]}>
+      <Text style={[styles.metricPillValue, {color: tone}]}>{value}</Text>
+      <Text style={styles.metricPillLabel}>{label}</Text>
+      {helper ? <Text style={styles.metricPillHelper}>{helper}</Text> : null}
+    </View>
+  );
+}
+
+interface SurfaceGroupProps {
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+  compact?: boolean;
+}
+
+export function SurfaceGroup({children, style, compact}: SurfaceGroupProps) {
+  return (
+    <View style={[styles.surfaceGroup, compact && styles.surfaceGroupCompact, style]}>
+      {children}
+    </View>
+  );
+}
+
+interface RowItemProps {
+  title: string;
+  subtitle?: string;
+  right?: React.ReactNode;
+  onPress?: () => void;
+  divider?: boolean;
+  disabled?: boolean;
+  style?: StyleProp<ViewStyle>;
+}
+
+export function RowItem({
+  title,
+  subtitle,
+  right,
+  onPress,
+  divider,
+  disabled,
+  style,
+}: RowItemProps) {
+  const content = (
+    <View style={[styles.rowItem, divider && styles.rowItemDivider, style]}>
+      <View style={styles.rowItemBody}>
+        <Text style={styles.rowItemTitle} numberOfLines={1}>
+          {title}
+        </Text>
+        {subtitle ? (
+          <Text style={styles.rowItemSubtitle} numberOfLines={2}>
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+      {right ? <View style={styles.rowItemRight}>{right}</View> : null}
+    </View>
+  );
+  if (!onPress) {
+    return content;
+  }
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({pressed}) => [
+        pressed && styles.rowItemPressed,
+        disabled && styles.rowItemDisabled,
+      ]}>
+      {content}
+    </Pressable>
   );
 }
 
@@ -242,13 +425,95 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     fontWeight: '600',
   },
-  emptyWrap: {
+  heroMetric: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.lg,
     alignItems: 'center',
-    paddingVertical: spacing.xxl,
     gap: spacing.xs,
   },
-  emptyTitle: {...typography.body, color: colors.textSecondary, textAlign: 'center'},
-  emptyDesc: {...typography.caption, color: colors.textMuted, textAlign: 'center'},
+  heroMetricLabel: {...typography.caption, color: colors.textMuted},
+  heroMetricLoader: {marginVertical: 12},
+  heroMetricValueRow: {flexDirection: 'row', alignItems: 'baseline', gap: 6},
+  heroMetricValue: {
+    fontSize: 44,
+    lineHeight: 50,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  heroMetricUnit: {...typography.body, color: colors.textSecondary},
+  heroMetricError: {...typography.h3, color: colors.error, marginVertical: 8},
+  heroMetricFooter: {...typography.micro, color: colors.textMuted, marginTop: 4},
+  segmented: {
+    flexDirection: 'row',
+    padding: 4,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.md,
+  },
+  segmentedItem: {
+    flex: 1,
+    minHeight: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.sm,
+    gap: 4,
+  },
+  segmentedItemActive: {backgroundColor: colors.surface},
+  segmentedItemPressed: {opacity: 0.75},
+  segmentedItemDisabled: {opacity: 0.45},
+  segmentedText: {...typography.caption, color: colors.textSecondary},
+  segmentedTextActive: {color: colors.text, fontWeight: '600'},
+  segmentedTextDisabled: {color: colors.textMuted},
+  segmentedCount: {...typography.micro, color: colors.textMuted},
+  segmentedCountActive: {color: colors.primary},
+  metricPill: {
+    flex: 1,
+    minHeight: 66,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  metricPillValue: {fontSize: 20, lineHeight: 24, fontWeight: '700'},
+  metricPillLabel: {...typography.micro, color: colors.textMuted},
+  metricPillHelper: {...typography.micro, color: colors.textMuted},
+  surfaceGroup: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+  },
+  surfaceGroupCompact: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  rowItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md - 2,
+  },
+  rowItemDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.divider,
+  },
+  rowItemPressed: {opacity: 0.75},
+  rowItemDisabled: {opacity: 0.45},
+  rowItemBody: {flex: 1, gap: 2},
+  rowItemTitle: {...typography.body, color: colors.text, fontWeight: '600'},
+  rowItemSubtitle: {...typography.caption, color: colors.textMuted},
+  rowItemRight: {alignItems: 'flex-end', justifyContent: 'center'},
   cardOuter: {marginBottom: spacing.sm},
   cardPressed: {opacity: 0.7},
   listCard: {

@@ -24,12 +24,24 @@ export interface Workflow {
   updatedAt: string;
   lastCheckedAt?: string;
   lastTriggeredAt?: string;
+  lastResult?: WorkflowLastResult;
   notifyOnce: boolean;
+}
+
+export type WorkflowCheckStatus = 'ok' | 'triggered' | 'unavailable' | 'error';
+
+export interface WorkflowLastResult {
+  status: WorkflowCheckStatus;
+  checkedAt: string;
+  message?: string;
+  detail?: string;
 }
 
 export type WorkflowCheckResult = {
   workflowId: string;
   triggered: boolean;
+  status: WorkflowCheckStatus;
+  checkedAt: string;
   message: string;
   detail?: string;
 };

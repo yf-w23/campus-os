@@ -1,7 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
-  ActivityIndicator,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,6 +18,7 @@ import {
   fetchHaidianWeather,
 } from '../../services/campus/weather';
 import {DetailHeader} from '../common/components/Ui';
+import {InlineLoader, StateBlock} from '../common/components/Status';
 
 type WeatherDetailProps = NativeStackScreenProps<
   RootStackParamList,
@@ -255,26 +254,19 @@ export function WeatherDetailScreen({navigation}: WeatherDetailProps) {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}>
         {loading && !weather ? (
-          <View style={styles.loadingWrap}>
-            <ActivityIndicator color={colors.primary} />
-            <Text style={styles.loadingText}>
-              {locale === 'zh' ? '正在更新天气' : 'Updating weather'}
-            </Text>
-          </View>
+          <InlineLoader
+            label={locale === 'zh' ? '正在更新天气' : 'Updating weather'}
+          />
         ) : null}
 
         {error && !weather ? (
-          <View style={styles.errorCard}>
-            <Text style={styles.errorTitle}>
-              {locale === 'zh' ? '天气暂不可用' : 'Weather unavailable'}
-            </Text>
-            <Text style={styles.errorText}>{error}</Text>
-            <Pressable style={styles.retryButton} onPress={refresh}>
-              <Text style={styles.retryText}>
-                {locale === 'zh' ? '重试' : 'Retry'}
-              </Text>
-            </Pressable>
-          </View>
+          <StateBlock
+            title={locale === 'zh' ? '天气暂不可用' : 'Weather unavailable'}
+            message={error}
+            tone="error"
+            actionLabel={locale === 'zh' ? '重试' : 'Retry'}
+            onAction={refresh}
+          />
         ) : null}
 
         {weather ? (
@@ -418,45 +410,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,
     gap: spacing.lg,
-  },
-  loadingWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.xxl,
-    gap: spacing.sm,
-  },
-  loadingText: {
-    ...typography.caption,
-    color: colors.textMuted,
-  },
-  errorCard: {
-    backgroundColor: colors.errorMuted,
-    borderRadius: radii.lg,
-    padding: spacing.md,
-    gap: spacing.sm,
-    borderWidth: 1,
-    borderColor: 'rgba(220, 38, 38, 0.14)',
-  },
-  errorTitle: {
-    ...typography.label,
-    color: colors.error,
-  },
-  errorText: {
-    ...typography.caption,
-    color: colors.text,
-  },
-  retryButton: {
-    alignSelf: 'flex-start',
-    borderRadius: radii.pill,
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  retryText: {
-    ...typography.label,
-    color: colors.primary,
   },
   currentCard: {
     backgroundColor: colors.surface,

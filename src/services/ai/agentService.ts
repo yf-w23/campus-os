@@ -13,6 +13,7 @@ import {
 import {LearningSnapshot} from '../../domain/learning';
 import {ManualDeadline} from '../../domain/deadline';
 import {getToolByName, toolSpecs, type AgentTool} from './tools';
+import {loadDisabledAIPermissions} from '../../storage/aiPermissionsStorage';
 
 export const AI_PRESETS: Record<
   AIProviderPreset,
@@ -179,6 +180,7 @@ export function buildSystemPrompt(context: AgentContext): string {
     '- 用户问校园网余额/在线设备时使用 get_network_balance / list_network_devices；注销设备前只使用 key，工具会自行查 mac。',
     '- 用户问校园卡时只查询余额和流水，不要承诺充值、挂失或修改密码。',
     '- 用户问邮件、收件箱、最近邮件、某封邮件内容或附件时，使用 list_mail_folders / search_mail_messages / read_mail_message 只读查询；不要发送、删除或移动邮件。',
+    '- 用户问校园新闻、通知、公告、最近动态、某关键词相关新闻时，使用 get_news_list / search_news 只读查询；需要正文摘要时，用结果里的 url 调 get_news_detail。不要承诺收藏、订阅或修改新闻偏好。',
     '- 用户问宿舍洗衣机状态、哪里有空闲洗衣机、某楼洗衣机剩余时间时，先用 list_laundry_buildings 找楼宇；有明确楼宇后用 get_laundry_status 获取真实状态。',
     '- 预约座位前若用户没指定地点，优先使用其常用图书馆（见下方记忆）；仍不确定时先询问。',
     '- 用户表达明确长期偏好（常去哪、默认充值多少、关注哪些课）时，用 remember_preference 记住。',
@@ -347,6 +349,12 @@ export interface AgentCallbacks {
     tool: AgentTool,
     status: ActionExecutionStatus,
     detail?: string,
+    meta?: {
+      result?: unknown;
+      preview?: ActionPreview;
+      confirmation?: ConfirmationStatus;
+      verification?: VerificationResult;
+    },
   ) => void;
   /** 写操作二次确认；返回 true 才执行 */
   requestConfirmation?: (
@@ -463,15 +471,19 @@ export async function runAgent(
     {role: 'system', content: buildSystemPrompt(context)},
     ...messages.map(m => ({role: m.role, content: m.content})),
   ];
-  const tools = toolSpecs();
+  const disabledPermissions = await loadDisabledAIPermissions();
+  const tools = toolSpecs(disabledPermissions);
 
   for (let round = 0; round < MAX_AGENT_ROUNDS; round += 1) {
-    const data = await postChatCompletion(provider, {
+    const requestBody: Record<string, unknown> = {
       messages: convo,
-      tools,
-      tool_choice: 'auto',
       stream: false,
-    });
+    };
+    if (tools.length > 0) {
+      requestBody.tools = tools;
+      requestBody.tool_choice = 'auto';
+    }
+    const data = await postChatCompletion(provider, requestBody);
     const message = data?.choices?.[0]?.message;
     const toolCalls: OpenAIToolCall[] | undefined = message?.tool_calls;
 
@@ -490,7 +502,7 @@ export async function runAgent(
     });
 
     for (const call of toolCalls) {
-      const tool = getToolByName(call.function?.name ?? '');
+      const tool = getToolByName(call.function?.name ?? '', disabledPermissions);
       let result: unknown;
 
       if (!tool) {
@@ -525,7 +537,11 @@ export async function runAgent(
               status = 'error';
               errorMessage = e instanceof Error ? e.message : String(e);
               result = {error: errorMessage};
-              callbacks.onToolEnd?.(tool, 'error', errorMessage);
+              callbacks.onToolEnd?.(tool, 'error', errorMessage, {
+                result,
+                preview,
+                confirmation,
+              });
             }
           }
           const requestConfirmation = callbacks.requestConfirmation;
@@ -538,7 +554,11 @@ export async function runAgent(
               cancelled: true,
               message: '缺少确认通道，已阻止执行',
             };
-            callbacks.onToolEnd?.(tool, 'cancelled', '缺少确认通道');
+            callbacks.onToolEnd?.(tool, 'cancelled', '缺少确认通道', {
+              result,
+              preview,
+              confirmation,
+            });
           } else if (!cancelled) {
             const ok = await requestConfirmation!(tool, args, preview);
             confirmation = ok ? 'approved' : 'denied';
@@ -550,7 +570,11 @@ export async function runAgent(
                 cancelled: true,
                 message: '用户取消了该操作',
               };
-              callbacks.onToolEnd?.(tool, 'cancelled', '已取消');
+              callbacks.onToolEnd?.(tool, 'cancelled', '已取消', {
+                result,
+                preview,
+                confirmation,
+              });
             }
           }
         }
@@ -570,13 +594,24 @@ export async function runAgent(
               tool,
               status,
               errorMessage ?? summarizeToolResult(result),
+              {
+                result,
+                preview,
+                confirmation,
+                verification,
+              },
             );
           } catch (e) {
             const detail = e instanceof Error ? e.message : String(e);
             result = {error: detail};
             status = 'error';
             errorMessage = detail;
-            callbacks.onToolEnd?.(tool, 'error', detail);
+            callbacks.onToolEnd?.(tool, 'error', detail, {
+              result,
+              preview,
+              confirmation,
+              verification,
+            });
           }
         }
 

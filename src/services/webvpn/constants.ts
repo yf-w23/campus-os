@@ -54,6 +54,36 @@ export const ENDPOINTS = {
   // === info.tsinghua.edu.cn 用户基本信息（用于校验 info portal session）===
   infoUserData: `${WEBVPN_ROOT_URL}/https/77726476706e69737468656265737421f9f9479369247b59700f81b9991b2631506205de/b/info/gxfw_fg/common/grjbxx`,
 
+  // === 信息门户新闻动态（对齐 thu-info-app / thu-info-lib news.ts）===
+  newsRedirectBase:
+    `${WEBVPN_ROOT_URL}/https/77726476706e69737468656265737421f9f9479369247b59700f81b9991b2631506205de`,
+  newsList:
+    `${WEBVPN_ROOT_URL}/https/77726476706e69737468656265737421f9f9479369247b59700f81b9991b2631506205de/b/info/xxfb_fg/xnzx/template/more?oType=xs&lydw=`,
+  newsSearch:
+    `${WEBVPN_ROOT_URL}/https/77726476706e69737468656265737421f9f9479369247b59700f81b9991b2631506205de/b/xnzx/search/info/xxfb_fg/teacher/getMobilePageList`,
+  newsDetail:
+    `${WEBVPN_ROOT_URL}/https/77726476706e69737468656265737421f9f9479369247b59700f81b9991b2631506205de/b/info/xxfb_fg/xnzx/template/detail`,
+  newsChannelList:
+    `${WEBVPN_ROOT_URL}/https/77726476706e69737468656265737421f9f9479369247b59700f81b9991b2631506205de/b/info/xxfb_fg/teacher/lm/subscribe/getlmListByDwh`,
+  newsSubscriptionList:
+    `${WEBVPN_ROOT_URL}/https/77726476706e69737468656265737421f9f9479369247b59700f81b9991b2631506205de/b/info/gxfw_fg/common/querySubscribeConditionNameList/XXFB`,
+  newsSourceList:
+    `${WEBVPN_ROOT_URL}/https/77726476706e69737468656265737421f9f9479369247b59700f81b9991b2631506205de/b/info/gxfw_fg/common/querySubscribeInformationUnitList`,
+  newsListBySubscription:
+    `${WEBVPN_ROOT_URL}/https/77726476706e69737468656265737421f9f9479369247b59700f81b9991b2631506205de/b/info/gxfw_fg/common/querySubscribeInfomationPageList`,
+  newsAddSubscription:
+    `${WEBVPN_ROOT_URL}/https/77726476706e69737468656265737421f9f9479369247b59700f81b9991b2631506205de/b/info/gxfw_fg/common/addSubscribeCondition`,
+  newsRemoveSubscription:
+    `${WEBVPN_ROOT_URL}/https/77726476706e69737468656265737421f9f9479369247b59700f81b9991b2631506205de/b/info/gxfw_fg/common/deleteSubscribeCondition/{id}/XXFB?_csrf={csrf}`,
+  newsAddFavorite:
+    `${WEBVPN_ROOT_URL}/https/77726476706e69737468656265737421f9f9479369247b59700f81b9991b2631506205de/b/info/gxfw_fg/common/addFavorite/XXFB/`,
+  newsRemoveFavorite:
+    `${WEBVPN_ROOT_URL}/https/77726476706e69737468656265737421f9f9479369247b59700f81b9991b2631506205de/b/info/gxfw_fg/common/delFavorite/XXFB/`,
+  newsFavoriteList:
+    `${WEBVPN_ROOT_URL}/https/77726476706e69737468656265737421f9f9479369247b59700f81b9991b2631506205de/b/info/gxfw_fg/common/queryFavoriteXxfbPageList`,
+  newsFileDownload:
+    `${WEBVPN_ROOT_URL}/https/77726476706e69737468656265737421f9f9479369247b59700f81b9991b2631506205de/b/info/wj/download/`,
+
   // === 培养方案 ===
   programRoot: `${WEBVPN_ROOT_URL}/https/77726476706e69737468656265737421faef5b8779`,
   programCompletion: `${WEBVPN_ROOT_URL}/https/77726476706e69737468656265737421faef5b8779/pyfa/main`,

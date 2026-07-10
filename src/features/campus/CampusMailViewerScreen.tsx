@@ -1,6 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
-  ActivityIndicator,
   Linking,
   Pressable,
   StyleSheet,
@@ -13,6 +12,7 @@ import {WebView, WebViewNavigation} from 'react-native-webview';
 import CookieManager from '@react-native-cookies/cookies';
 import {colors, spacing, typography} from '../../app/theme';
 import {RootStackParamList} from '../../app/navigation/types';
+import {InlineLoader, StateBlock} from '../common/components/Status';
 import {loadCredentials} from '../../storage/secureStorage';
 import {CampusCredentials} from '../../domain/campus';
 import {tsinghuaAuthService} from '../../services/auth/tsinghuaAuth';
@@ -172,10 +172,7 @@ export function CampusMailViewerScreen({route, navigation}: Props) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <Header title={title || '清华邮箱'} onBack={() => navigation.goBack()} />
-        <View style={styles.loading}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>正在激活邮箱会话…</Text>
-        </View>
+        <InlineLoader label="正在激活邮箱会话..." style={styles.loading} />
       </SafeAreaView>
     );
   }
@@ -189,10 +186,12 @@ export function CampusMailViewerScreen({route, navigation}: Props) {
       />
       <View style={styles.webWrap}>
         {error ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorTitle}>邮箱会话准备失败</Text>
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
+          <StateBlock
+            title="邮箱会话准备失败"
+            message={error}
+            tone="error"
+            style={styles.statusBlock}
+          />
         ) : (
           <WebView
             ref={webRef}
@@ -218,10 +217,7 @@ export function CampusMailViewerScreen({route, navigation}: Props) {
           />
         )}
         {loading && !error ? (
-          <View style={styles.loading}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>加载邮箱…</Text>
-          </View>
+          <InlineLoader label="加载邮箱..." style={styles.loading} />
         ) : null}
       </View>
     </SafeAreaView>
@@ -298,14 +294,5 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(10, 10, 11, 0.6)',
     gap: spacing.sm,
   },
-  loadingText: {...typography.caption, color: colors.textSecondary},
-  errorBox: {
-    margin: spacing.lg,
-    padding: spacing.lg,
-    backgroundColor: colors.errorMuted,
-    borderRadius: 14,
-    gap: spacing.sm,
-  },
-  errorTitle: {...typography.h3, color: colors.error},
-  errorText: {...typography.body, color: colors.error},
+  statusBlock: {margin: spacing.lg},
 });

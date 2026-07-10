@@ -4,7 +4,8 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {useSelector} from 'react-redux';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {colors, radii, shadows, spacing, typography} from '../../app/theme';
-import {Badge, DetailHeader, EmptyState, InfoRow, ListCard, SectionHeader} from '../common/components/Ui';
+import {Badge, DetailHeader, InfoRow, ListCard, SectionHeader} from '../common/components/Ui';
+import {EmptyHint} from '../common/components/Status';
 import {selectLearning} from '../../state/selectors';
 import {HomeworkStatus} from '../../domain/learning';
 import {stripHtml} from '../../utils/html';
@@ -56,7 +57,11 @@ export function CourseDetailScreen({route, navigation}: Props) {
     return (
       <SafeAreaView style={styles.container}>
         <DetailHeader title="课程详情" onBack={() => navigation.goBack()} />
-        <EmptyState title="课程信息不存在" />
+        <EmptyHint
+          title="课程信息不存在"
+          message="当前本地快照里没有这门课程，可以返回首页重新同步。"
+          style={styles.fullEmpty}
+        />
       </SafeAreaView>
     );
   }
@@ -90,7 +95,11 @@ export function CourseDetailScreen({route, navigation}: Props) {
 
         <SectionHeader title={`作业 (${homework.length})`} />
         {homework.length === 0 ? (
-          <EmptyState title="暂无作业" />
+          <EmptyHint
+            title="暂无作业"
+            message="这门课当前没有同步到作业。"
+            style={styles.sectionEmpty}
+          />
         ) : (
           homework.map(item => (
             <ListCard
@@ -110,7 +119,11 @@ export function CourseDetailScreen({route, navigation}: Props) {
 
         <SectionHeader title={`通知 (${notifications.length})`} />
         {notifications.length === 0 ? (
-          <EmptyState title="暂无通知" />
+          <EmptyHint
+            title="暂无通知"
+            message="这门课当前没有同步到通知。"
+            style={styles.sectionEmpty}
+          />
         ) : (
           notifications.slice(0, 10).map(item => (
             <ListCard
@@ -133,7 +146,11 @@ export function CourseDetailScreen({route, navigation}: Props) {
 
         <SectionHeader title={`资料 (${files.length})`} />
         {files.length === 0 ? (
-          <EmptyState title="暂无资料" />
+          <EmptyHint
+            title="暂无资料"
+            message="这门课当前没有同步到课程资料。"
+            style={styles.sectionEmpty}
+          />
         ) : (
           files.slice(0, 20).map(item => (
             <ListCard
@@ -169,6 +186,8 @@ function Stat({label, value}: {label: string; value: number}) {
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
   content: {padding: spacing.lg, paddingBottom: spacing.xxl},
+  fullEmpty: {flex: 1},
+  sectionEmpty: {paddingVertical: spacing.lg},
   hero: {
     backgroundColor: colors.surface,
     borderRadius: radii.lg,

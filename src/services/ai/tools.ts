@@ -69,7 +69,8 @@ import {
   getDegreeProgramCompletion,
   getFullDegreeProgram,
 } from '../campus/program';
-import {getNewsList, searchNewsList} from '../campus/news';
+import {getNewsDetail, getNewsList, searchNewsList} from '../campus/news';
+import {stripHtml} from '../../utils/html';
 import {
   listNativeMailFolders,
   listNativeMailMessages,
@@ -2314,6 +2315,7 @@ const getNewsListTool: AgentTool = {
         source: n.source,
         channel: n.channel,
         topped: n.topped,
+        url: n.url,
       })),
     };
   },
@@ -2356,7 +2358,48 @@ const searchNewsTool: AgentTool = {
         title: n.name,
         date: n.date,
         source: n.source,
+        channel: n.channel,
+        topped: n.topped,
+        url: n.url,
       })),
+    };
+  },
+};
+
+const getNewsDetailTool: AgentTool = {
+  name: 'get_news_detail',
+  title: '新闻详情摘要',
+  description:
+    '读取某条校园新闻详情并返回纯文本摘要。需要传入 get_news_list/search_news 返回的 url；只读，不收藏、不订阅、不修改新闻偏好。',
+  parameters: {
+    type: 'object',
+    properties: {
+      url: {
+        type: 'string',
+        description: '新闻详情 URL，来自 get_news_list/search_news 返回值',
+      },
+      maxChars: {
+        type: 'number',
+        description: '返回摘要最大字符数，默认 1600，最多 3000',
+      },
+    },
+    required: ['url'],
+  },
+  risk: 'read',
+  permission: 'campus.news.read',
+  summarize: () => '读取新闻详情摘要',
+  run: async (args: {url: string; maxChars?: number}) => {
+    requireRealSession();
+    const detail = await getNewsDetail(args.url);
+    const maxChars = Math.min(3000, Math.max(300, Number(args.maxChars || 1600)));
+    const text = stripHtml(detail.content || detail.brief).replace(/\s+/g, ' ').trim();
+    return {
+      title: detail.title,
+      summary: text.slice(0, maxChars),
+      truncated: text.length > maxChars,
+      brief: detail.brief,
+      sourceUrl: args.url,
+      textLength: text.length,
     };
   },
 };
@@ -2730,6 +2773,9 @@ export const AGENT_TOOLS: AgentTool[] = [
   listMailFoldersTool,
   searchMailMessagesTool,
   readMailMessageTool,
+  getNewsListTool,
+  searchNewsTool,
+  getNewsDetailTool,
   listSportsVenuesTool,
   searchSportsSlotsTool,
   listSportsReservationRecordsTool,
@@ -2749,22 +2795,32 @@ export const AGENT_TOOLS: AgentTool[] = [
   bookLibraryRoomTool,
   cancelLibraryRoomBookingTool,
   rememberTool,
-  getDegreeProgramCompletionTool,
-  getFullDegreeProgramTool,
-  getNewsListTool,
-  searchNewsTool,
+  // Program adapters are still placeholders; do not expose them to AI
+  // until they return real campus data.
   getSelectedCoursesTool,
   selectCourseTool,
   dropCourseTool,
 ];
 
-export function getToolByName(name: string): AgentTool | undefined {
-  return AGENT_TOOLS.find(t => t.name === name);
+export function availableAgentTools(
+  disabledPermissions: string[] = [],
+): AgentTool[] {
+  const disabled = new Set(disabledPermissions);
+  return AGENT_TOOLS.filter(t => !disabled.has(t.permission));
+}
+
+export function getToolByName(
+  name: string,
+  disabledPermissions: string[] = [],
+): AgentTool | undefined {
+  return availableAgentTools(disabledPermissions).find(t => t.name === name);
 }
 
 /** 转成 OpenAI tools 数组 */
-export function toolSpecs(): Array<Record<string, unknown>> {
-  return AGENT_TOOLS.map(t => ({
+export function toolSpecs(
+  disabledPermissions: string[] = [],
+): Array<Record<string, unknown>> {
+  return availableAgentTools(disabledPermissions).map(t => ({
     type: 'function',
     function: {
       name: t.name,

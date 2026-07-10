@@ -89,6 +89,18 @@ function formatAuditTime(value: string): string {
   return `${month}-${day} ${hour}:${minute}`;
 }
 
+function formatAuditJson(value: unknown): string {
+  try {
+    const text = JSON.stringify(value, null, 2);
+    if (!text) {
+      return '';
+    }
+    return text.length > 800 ? `${text.slice(0, 800)}...` : text;
+  } catch {
+    return String(value ?? '');
+  }
+}
+
 interface RowProps {
   label: string;
   value?: string;
@@ -145,6 +157,7 @@ export function SettingsScreen() {
     provider.preset === 'custom' ? provider.model : '',
   );
   const [auditRecords, setAuditRecords] = useState<AuditRecord[]>([]);
+  const [expandedAuditId, setExpandedAuditId] = useState<string | null>(null);
   const [aiMemory, setAiMemory] = useState<AIMemory>({});
   const [memoryExpanded, setMemoryExpanded] = useState(false);
 
@@ -318,6 +331,20 @@ export function SettingsScreen() {
             value={t.monitors.title}
             onPress={() => navigation.navigate('Monitors')}
             right={<Text style={styles.chev}>›</Text>}
+            divider
+          />
+          <Row
+            label="AI 权限面板"
+            value="工具开关"
+            onPress={() => navigation.navigate('AIPermissions')}
+            right={<Text style={styles.chev}>›</Text>}
+            divider
+          />
+          <Row
+            label="数据新鲜度"
+            value="缓存状态"
+            onPress={() => navigation.navigate('CacheFreshness')}
+            right={<Text style={styles.chev}>›</Text>}
           />
         </View>
 
@@ -384,9 +411,16 @@ export function SettingsScreen() {
           {auditRecords.length === 0 ? (
             <Text style={styles.auditEmpty}>{t.settings.noAiActionRecords}</Text>
           ) : (
-            auditRecords.slice(0, 6).map((record, index) => (
-              <View
+            auditRecords.slice(0, 6).map((record, index) => {
+              const expanded = expandedAuditId === record.id;
+              return (
+              <Pressable
                 key={record.id}
+                onPress={() =>
+                  setExpandedAuditId(current =>
+                    current === record.id ? null : record.id,
+                  )
+                }
                 style={[
                   styles.auditRecord,
                   index < Math.min(auditRecords.length, 6) - 1 &&
@@ -424,8 +458,49 @@ export function SettingsScreen() {
                       : ''}
                   </Text>
                 ) : null}
-              </View>
-            ))
+                <Text style={styles.auditExpandHint}>
+                  {expanded ? t.settings.collapse : t.settings.expand}
+                </Text>
+                {expanded ? (
+                  <View style={styles.auditExpanded}>
+                    <View style={styles.auditExpandedRow}>
+                      <Text style={styles.auditExpandedLabel}>权限</Text>
+                      <Text style={styles.auditExpandedValue}>
+                        {record.permission}
+                      </Text>
+                    </View>
+                    {record.preview ? (
+                      <>
+                        <View style={styles.auditExpandedRow}>
+                          <Text style={styles.auditExpandedLabel}>影响</Text>
+                          <Text style={styles.auditExpandedValue}>
+                            {record.preview.affectedResource ||
+                              record.preview.title}
+                          </Text>
+                        </View>
+                        <Text style={styles.auditPreviewText}>
+                          {record.preview.summary}
+                        </Text>
+                      </>
+                    ) : null}
+                    {record.verification?.message ? (
+                      <Text style={styles.auditPreviewText}>
+                        验证结果：{record.verification.message}
+                      </Text>
+                    ) : null}
+                    {record.params != null ? (
+                      <View style={styles.auditParamsBox}>
+                        <Text style={styles.auditParamsTitle}>脱敏参数</Text>
+                        <Text style={styles.auditParamsText}>
+                          {formatAuditJson(record.params)}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ) : null}
+              </Pressable>
+              );
+            })
           )}
         </View>
         {auditRecords.length > 0 ? (
@@ -677,6 +752,55 @@ const styles = StyleSheet.create({
   auditDetail: {
     ...typography.caption,
     color: colors.textSecondary,
+  },
+  auditExpandHint: {
+    ...typography.micro,
+    color: colors.primary,
+    fontWeight: '700',
+    alignSelf: 'flex-start',
+    marginTop: 2,
+  },
+  auditExpanded: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.divider,
+    gap: spacing.xs,
+  },
+  auditExpandedRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  auditExpandedLabel: {
+    ...typography.micro,
+    color: colors.textMuted,
+    width: 38,
+  },
+  auditExpandedValue: {
+    ...typography.micro,
+    color: colors.text,
+    flex: 1,
+  },
+  auditPreviewText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  auditParamsBox: {
+    marginTop: spacing.xs,
+    borderRadius: radii.sm,
+    backgroundColor: colors.surfaceAlt,
+    padding: spacing.sm,
+    gap: 4,
+  },
+  auditParamsTitle: {
+    ...typography.micro,
+    color: colors.textMuted,
+    fontWeight: '700',
+  },
+  auditParamsText: {
+    ...typography.micro,
+    color: colors.textSecondary,
+    fontFamily: 'monospace',
   },
   auditActions: {
     marginTop: spacing.sm,

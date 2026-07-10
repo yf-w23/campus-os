@@ -16,6 +16,7 @@ import {
   mergeCampusSchedules,
   parseScheduleJson,
   parseSemesterCalendar,
+  selectSemesterCalendar,
 } from './scheduleModel';
 
 const GROUP_SIZE = 3;
@@ -80,7 +81,9 @@ export async function fetchScheduleRangeLegacy(): Promise<ScheduleEvent[]> {
   );
 }
 
-export async function fetchSemesterCalendar(): Promise<SemesterCalendar> {
+export async function fetchSemesterCalendar(
+  nextSemesterIndex?: number,
+): Promise<SemesterCalendar> {
   const csrf = tsinghuaAuthService.getCsrfToken();
   if (!csrf) {
     throw new Error('未登录，无法获取学期');
@@ -89,7 +92,7 @@ export async function fetchSemesterCalendar(): Promise<SemesterCalendar> {
   const json = (await webvpnTransport.fetchJson(url)) as Parameters<
     typeof parseSemesterCalendar
   >[0];
-  return parseSemesterCalendar(json);
+  return selectSemesterCalendar(parseSemesterCalendar(json), nextSemesterIndex);
 }
 
 async function fetchPrimaryChunk(
@@ -141,29 +144,33 @@ export interface ScheduleSyncResult {
 /**
  * 统一同步：先保证 legacy 扁平课表（AI 依赖），再尽力拉 thu-info 学期课表供网格。
  */
-export async function fetchScheduleSync(): Promise<ScheduleSyncResult> {
+export async function fetchScheduleSync(
+  nextSemesterIndex?: number,
+): Promise<ScheduleSyncResult> {
   let events: ScheduleEvent[] = [];
   let legacyError: unknown;
-  try {
-    events = await fetchScheduleRangeLegacy();
-  } catch (e) {
-    legacyError = e;
+  const useCurrentSemester =
+    nextSemesterIndex === undefined || nextSemesterIndex < 0;
+  if (useCurrentSemester) {
+    try {
+      events = await fetchScheduleRangeLegacy();
+    } catch (e) {
+      legacyError = e;
+    }
   }
 
   let pack: CampusSchedulePack | undefined;
   try {
     await ensureRegistrarRoam();
-    const calendar = await fetchSemesterCalendar();
+    const calendar = await fetchSemesterCalendar(nextSemesterIndex);
     let schedules = await fetchPrimarySchedule(calendar);
-    if (schedules.length === 0 && events.length > 0) {
+    if (useCurrentSemester && schedules.length === 0 && events.length > 0) {
       schedules = campusSchedulesFromEvents(events);
     }
-    if (schedules.length > 0) {
-      pack = {calendar, schedules};
-      const fullSemesterEvents = flattenSchedulesToEvents(schedules);
-      if (fullSemesterEvents.length > 0) {
-        events = fullSemesterEvents;
-      }
+    pack = {calendar, schedules};
+    const fullSemesterEvents = flattenSchedulesToEvents(schedules);
+    if (fullSemesterEvents.length > 0) {
+      events = fullSemesterEvents;
     }
   } catch {
     pack = undefined;

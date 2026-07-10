@@ -1,6 +1,5 @@
 import React, {useState} from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Image,
   ImageSourcePropType,
@@ -14,6 +13,7 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {colors, radii, spacing, typography} from '../../app/theme';
 import {DetailHeader} from '../common/components/Ui';
+import {InlineLoader} from '../common/components/Status';
 import {tsinghuaAuthService} from '../../services/auth/tsinghuaAuth';
 import {RootStackParamList} from '../../app/navigation/types';
 import {loadCredentials} from '../../storage/secureStorage';
@@ -169,10 +169,7 @@ export function CampusEntryScreen({
       </ScrollView>
 
       {activating ? (
-        <View style={styles.overlay}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.overlayText}>{activatingHint}</Text>
-        </View>
+        <InlineLoader label={activatingHint} style={styles.overlay} />
       ) : null}
     </SafeAreaView>
   );
@@ -233,5 +230,4 @@ const styles = StyleSheet.create({
     backgroundColor: colors.overlay,
     gap: spacing.sm,
   },
-  overlayText: {...typography.body, color: colors.text},
 });

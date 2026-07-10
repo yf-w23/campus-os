@@ -1,6 +1,5 @@
 import React, {useState} from 'react';
 import {
-  ActivityIndicator,
   Alert,
   ScrollView,
   StyleSheet,
@@ -13,6 +12,7 @@ import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {colors, radii, spacing, typography} from '../../app/theme';
 import {DetailHeader} from '../common/components/Ui';
 import {PrimaryButton} from '../common/components/Buttons';
+import {InlineLoader} from '../common/components/Status';
 import {RootStackParamList} from '../../app/navigation/types';
 import {sendNativeMailMessage} from '../../services/campus/nativeMail';
 
@@ -126,7 +126,10 @@ export function CampusMailComposeScreen({route, navigation}: Props) {
           loading={sending}
         />
         {sending ? (
-          <ActivityIndicator color={colors.primary} style={styles.indicator} />
+          <InlineLoader
+            label="正在通过清华 SMTP 发送..."
+            style={styles.indicator}
+          />
         ) : null}
       </ScrollView>
     </SafeAreaView>

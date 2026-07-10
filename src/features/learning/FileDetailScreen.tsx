@@ -4,7 +4,8 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {useSelector} from 'react-redux';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {colors, radii, shadows, spacing, typography} from '../../app/theme';
-import {Badge, DetailHeader, EmptyState, InfoRow} from '../common/components/Ui';
+import {Badge, DetailHeader, InfoRow} from '../common/components/Ui';
+import {EmptyHint} from '../common/components/Status';
 import {PrimaryButton} from '../common/components/Buttons';
 import {selectLearning} from '../../state/selectors';
 import {RootStackParamList} from '../../app/navigation/types';
@@ -36,7 +37,11 @@ export function FileDetailScreen({route, navigation}: Props) {
     return (
       <SafeAreaView style={styles.container}>
         <DetailHeader title="资料详情" onBack={() => navigation.goBack()} />
-        <EmptyState title="资料不存在" />
+        <EmptyHint
+          title="资料不存在"
+          message="当前本地快照里没有这份资料，可以返回首页重新同步。"
+          style={styles.fullEmpty}
+        />
       </SafeAreaView>
     );
   }
@@ -89,6 +94,7 @@ export function FileDetailScreen({route, navigation}: Props) {
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
   content: {padding: spacing.lg, paddingBottom: spacing.xxl},
+  fullEmpty: {flex: 1},
   hero: {
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
