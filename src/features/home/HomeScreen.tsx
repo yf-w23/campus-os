@@ -37,6 +37,7 @@ import {PrimaryButton} from '../common/components/Buttons';
 import {FadeIn, StaggerItem} from '../common/components/Animated';
 import {HomeLoadingSkeleton} from '../common/components/Skeleton';
 import {SectionHeader} from '../common/components/Ui';
+import {StateBlock} from '../common/components/Status';
 import {buildHomeWorkbenchBlocks} from './homeWorkbench';
 
 type HomeScreenProps = CompositeScreenProps<
@@ -274,16 +275,18 @@ export function HomeScreen({navigation}: HomeScreenProps) {
 
         {error && !auth.demoMode ? (
           <FadeIn delay={80}>
-            <View style={styles.errorCard}>
-              <Text style={styles.errorTitle}>{t.home.syncFailed}</Text>
-              <Text style={styles.errorText}>{error}</Text>
+            <StateBlock
+              title={t.home.syncFailed}
+              message={error}
+              tone="error"
+              style={styles.syncErrorBlock}>
               <PrimaryButton
                 label={loading ? '同步中…' : t.home.retrySync}
                 onPress={handleSync}
                 loading={loading}
                 variant="ghost"
               />
-            </View>
+            </StateBlock>
           </FadeIn>
         ) : null}
 
@@ -466,23 +469,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: '600',
   },
-  errorCard: {
-    backgroundColor: colors.errorMuted,
-    borderRadius: radii.lg,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: 'rgba(248, 113, 113, 0.25)',
-    gap: spacing.sm,
-  },
-  errorTitle: {
-    ...typography.label,
-    color: colors.error,
-  },
-  errorText: {
-    ...typography.caption,
-    color: colors.text,
-  },
+  syncErrorBlock: {marginBottom: spacing.md},
   todayCard: {
     backgroundColor: colors.surface,
     borderRadius: radii.lg,

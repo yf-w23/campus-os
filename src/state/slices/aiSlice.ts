@@ -146,17 +146,14 @@ const aiSlice = createSlice({
     /** 更新当前 assistant 消息最后一条工具轨迹的状态/详情 */
     updateLastToolTrace(
       state,
-      action: PayloadAction<{status: ToolTrace['status']; detail?: string}>,
+      action: PayloadAction<Partial<ToolTrace> & {status: ToolTrace['status']}>,
     ) {
       const conv = activeConv(state);
       const last = conv?.messages[conv.messages.length - 1];
       const traces = last?.toolTraces;
       if (traces && traces.length) {
         const t = traces[traces.length - 1];
-        t.status = action.payload.status;
-        if (action.payload.detail !== undefined) {
-          t.detail = action.payload.detail;
-        }
+        Object.assign(t, action.payload);
       }
     },
     setProvider(state, action: PayloadAction<Omit<AIProviderConfig, 'apiKey'>>) {

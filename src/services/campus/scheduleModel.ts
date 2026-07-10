@@ -96,7 +96,43 @@ export function parseSemesterCalendar(json: {
   }
   const current = parseSemesterRow(json.result);
   const nextSemesterList = (json.resultList ?? []).map(parseSemesterRow);
-  return {...current, nextSemesterList};
+  return {...current, currentSemester: current, nextSemesterList};
+}
+
+export function selectSemesterCalendar(
+  calendar: SemesterCalendar,
+  nextSemesterIndex?: number,
+): SemesterCalendar {
+  if (nextSemesterIndex === undefined || nextSemesterIndex < 0) {
+    const current = calendar.currentSemester ?? {
+      firstDay: calendar.firstDay,
+      semesterId: calendar.semesterId,
+      semesterName: calendar.semesterName,
+      weekCount: calendar.weekCount,
+    };
+    return {
+      ...current,
+      currentSemester: current,
+      nextSemesterList: calendar.nextSemesterList,
+      selectedSemesterIndex: undefined,
+    };
+  }
+  const selected = calendar.nextSemesterList[nextSemesterIndex];
+  if (!selected) {
+    return selectSemesterCalendar(calendar, undefined);
+  }
+  const current = calendar.currentSemester ?? {
+    firstDay: calendar.firstDay,
+    semesterId: calendar.semesterId,
+    semesterName: calendar.semesterName,
+    weekCount: calendar.weekCount,
+  };
+  return {
+    ...selected,
+    currentSemester: current,
+    nextSemesterList: calendar.nextSemesterList,
+    selectedSemesterIndex: nextSemesterIndex,
+  };
 }
 
 export function getWeekFromTime(beginISO: string, firstDay: string): number {

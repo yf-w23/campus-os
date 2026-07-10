@@ -1,13 +1,21 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {ScrollView, StyleSheet, Text, View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {colors, radii, shadows, spacing, typography} from '../../app/theme';
-import {Badge, DetailHeader, EmptyState} from '../common/components/Ui';
+import {
+  Badge,
+  DetailHeader,
+  MetricPill,
+  SegmentedControl,
+  SurfaceGroup,
+} from '../common/components/Ui';
+import {EmptyHint, InlineLoader, StateBlock} from '../common/components/Status';
 import {RootStackParamList} from '../../app/navigation/types';
 import {fetchGradeReport, GradeCourse, GradeReportResult} from '../../services/campus/grades';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CampusGrades'>;
+type GradeAudience = 'undergrad' | 'grad';
 
 function gradeTone(g: string): 'success' | 'default' | 'warning' | 'error' {
   if (g.startsWith('A')) return 'success';
@@ -41,6 +49,8 @@ export function GradesScreen({navigation}: Props) {
     load(graduate);
   }, [load, graduate]);
 
+  const gradeAudience: GradeAudience = graduate ? 'grad' : 'undergrad';
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <DetailHeader
@@ -49,55 +59,47 @@ export function GradesScreen({navigation}: Props) {
         rightLabel={loading ? '…' : '刷新'}
         onRight={() => !loading && load(graduate)}
       />
-      <View style={styles.tabs}>
-        {(['本科生', '研究生'] as const).map((label, i) => {
-          const active = (i === 1) === graduate;
-          return (
-            <Pressable
-              key={label}
-              style={[styles.tab, active && styles.tabActive]}
-              onPress={() => setGraduate(i === 1)}>
-              <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <SegmentedControl<GradeAudience>
+        value={gradeAudience}
+        onChange={value => setGraduate(value === 'grad')}
+        options={[
+          {value: 'undergrad', label: '本科生'},
+          {value: 'grad', label: '研究生'},
+        ]}
+        style={styles.tabs}
+      />
 
       {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>正在从教务系统拉取成绩…</Text>
-        </View>
+        <InlineLoader label="正在从教务系统拉取成绩..." style={styles.center} />
       ) : error ? (
         <View style={styles.center}>
-          <Text style={styles.errorTitle}>加载失败</Text>
-          <Text style={styles.errorMsg}>{error}</Text>
-          <Pressable style={styles.retry} onPress={() => load(graduate)}>
-            <Text style={styles.retryText}>重试</Text>
-          </Pressable>
+          <StateBlock
+            title="成绩加载失败"
+            message={error}
+            tone="error"
+            actionLabel="重试"
+            onAction={() => load(graduate)}
+            style={styles.statusBlock}
+          />
         </View>
       ) : !report || report.courses.length === 0 ? (
-        <EmptyState title="暂无成绩" description="本学期尚未录入成绩" />
+        <EmptyHint
+          title="暂无成绩"
+          message="本学期尚未录入成绩，或当前培养层次暂无可显示课程。"
+          style={styles.center}
+        />
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryValue}>
-                {isNaN(report.gpa) ? 'N/A' : report.gpa.toFixed(2)}
-              </Text>
-              <Text style={styles.summaryLabel}>学分绩</Text>
-            </View>
+          <SurfaceGroup compact style={styles.summaryCard}>
+            <MetricPill
+              label="学分绩"
+              value={isNaN(report.gpa) ? 'N/A' : report.gpa.toFixed(2)}
+            />
             <View style={styles.summaryDivider} />
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryValue}>{report.allCredit}</Text>
-              <Text style={styles.summaryLabel}>总学分</Text>
-            </View>
+            <MetricPill label="总学分" value={report.allCredit} />
             <View style={styles.summaryDivider} />
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryValue}>{report.courses.length}</Text>
-              <Text style={styles.summaryLabel}>课程数</Text>
-            </View>
-          </View>
+            <MetricPill label="课程数" value={report.courses.length} />
+          </SurfaceGroup>
           <Text style={styles.summaryFootnote}>
             学分绩按 {report.totalCredit} 学分（不含 P/F 等通过制课程）计算
           </Text>
@@ -130,42 +132,19 @@ export function GradesScreen({navigation}: Props) {
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
   tabs: {
-    flexDirection: 'row',
-    padding: 4,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radii.md,
     marginHorizontal: spacing.lg,
     marginTop: spacing.md,
   },
-  tab: {flex: 1, paddingVertical: spacing.sm, alignItems: 'center', borderRadius: radii.sm},
-  tabActive: {backgroundColor: colors.surface},
-  tabText: {...typography.caption, color: colors.textSecondary},
-  tabTextActive: {color: colors.text, fontWeight: '600'},
   content: {padding: spacing.lg, paddingBottom: spacing.xxl},
   center: {flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.lg},
-  loadingText: {...typography.caption, color: colors.textSecondary},
-  errorTitle: {...typography.h3, color: colors.error},
-  errorMsg: {...typography.caption, color: colors.textSecondary, textAlign: 'center'},
-  retry: {
-    marginTop: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.primary,
-    borderRadius: radii.md,
-  },
-  retryText: {...typography.label, color: colors.textInvert},
+  statusBlock: {alignSelf: 'stretch'},
   summaryCard: {
     flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    padding: spacing.lg,
     marginBottom: spacing.lg,
     ...shadows.soft,
     alignItems: 'center',
+    gap: spacing.sm,
   },
-  summaryItem: {flex: 1, alignItems: 'center', gap: 4},
-  summaryValue: {...typography.h1, color: colors.primary},
-  summaryLabel: {...typography.micro, color: colors.textMuted},
   summaryDivider: {width: 1, height: 40, backgroundColor: colors.divider},
   summaryFootnote: {
     ...typography.micro,

@@ -306,13 +306,15 @@ export async function fetchCourseFiles(courses: CourseInfo[]): Promise<CourseFil
 }
 
 // ====== 聚合 ======
-async function fetchLearningCoreSnapshotInner(): Promise<LearningCoreResult> {
+async function fetchLearningCoreSnapshotInner(
+  nextSemesterIndex?: number,
+): Promise<LearningCoreResult> {
   const courses = await fetchCourses();
 
   let schedule: ScheduleEvent[] = [];
   let schedulePack: CampusSchedulePack | undefined;
   try {
-    const result = await fetchScheduleSync();
+    const result = await fetchScheduleSync(nextSemesterIndex);
     schedule = result.events;
     schedulePack = result.pack;
   } catch {
@@ -337,9 +339,11 @@ async function fetchLearningCoreSnapshotInner(): Promise<LearningCoreResult> {
   };
 }
 
-export async function fetchLearningCoreSnapshot(): Promise<LearningCoreResult> {
+export async function fetchLearningCoreSnapshot(
+  nextSemesterIndex?: number,
+): Promise<LearningCoreResult> {
   return tsinghuaAuthService.withSessionRecovery(
-    () => fetchLearningCoreSnapshotInner(),
+    () => fetchLearningCoreSnapshotInner(nextSemesterIndex),
     undefined,
     'learning-core',
   );

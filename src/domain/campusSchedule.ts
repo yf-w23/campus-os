@@ -33,5 +33,9 @@ export interface SemesterInfo {
 }
 
 export interface SemesterCalendar extends SemesterInfo {
+  /** 当前学期原始信息；当页面切到 nextSemesterList 时仍保留，供学期选择器展示。 */
+  currentSemester?: SemesterInfo;
   nextSemesterList: SemesterInfo[];
+  /** 对齐 thu-info-lib getSchedule(nextSemesterIndex)：undefined 表示当前学期，0+ 表示 nextSemesterList 的索引。 */
+  selectedSemesterIndex?: number;
 }

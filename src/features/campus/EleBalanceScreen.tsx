@@ -1,7 +1,5 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {
-  ActivityIndicator,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -9,9 +7,10 @@ import {
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
-import {colors, radii, spacing, typography} from '../../app/theme';
-import {DetailHeader, InfoRow} from '../common/components/Ui';
+import {colors, spacing, typography} from '../../app/theme';
+import {DetailHeader, HeroMetricCard, InfoRow, SurfaceGroup} from '../common/components/Ui';
 import {PrimaryButton} from '../common/components/Buttons';
+import {StateBlock} from '../common/components/Status';
 import {RootStackParamList} from '../../app/navigation/types';
 import {
   EleRemainder,
@@ -70,51 +69,41 @@ export function EleBalanceScreen({navigation}: Props) {
         onRight={load}
       />
       <ScrollView contentContainerStyle={styles.content}>
-        {/* 余额 hero */}
-        <View style={styles.hero}>
-          <Text style={styles.heroLabel}>当前剩余电量</Text>
-          {loading ? (
-            <ActivityIndicator color={colors.primary} style={{marginVertical: 12}} />
-          ) : error ? (
-            <Text style={styles.heroError}>加载失败</Text>
-          ) : (
-            <View style={styles.heroValueRow}>
-              <Text style={styles.heroValue}>
-                {remainder ? remainder.remainder : '—'}
-              </Text>
-              <Text style={styles.heroUnit}>度</Text>
-            </View>
-          )}
-          {remainder?.updateTime ? (
-            <Text style={styles.heroTime}>更新于 {remainder.updateTime}</Text>
-          ) : null}
-        </View>
+        <HeroMetricCard
+          label="当前剩余电量"
+          loading={loading}
+          error={Boolean(error)}
+          value={remainder ? remainder.remainder : '—'}
+          unit="度"
+          footer={remainder?.updateTime ? `更新于 ${remainder.updateTime}` : undefined}
+        />
 
         {error ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
-            <Pressable
-              onPress={() =>
-                navigation.navigate('InAppViewer', {
-                  url: ELE_BALANCE_WEB_URL,
-                  title: '电费余额',
-                })
-              }>
-              <Text style={styles.link}>用网页查看 ›</Text>
-            </Pressable>
-          </View>
+          <StateBlock
+            title="电费余额加载失败"
+            message={error}
+            tone="error"
+            actionLabel="用网页查看"
+            onAction={() =>
+              navigation.navigate('InAppViewer', {
+                url: ELE_BALANCE_WEB_URL,
+                title: '电费余额',
+              })
+            }
+            style={styles.statusBlock}
+          />
         ) : null}
 
         {/* 房间信息 */}
         {room ? (
           <>
             <Text style={styles.sectionTitle}>房间信息</Text>
-            <View style={styles.card}>
+            <SurfaceGroup>
               <InfoRow label="户名" value={room.userName} />
               <InfoRow label="楼号" value={room.building} />
               <InfoRow label="房间" value={room.room} />
               <InfoRow label="学号" value={room.studentId} mono />
-            </View>
+            </SurfaceGroup>
           </>
         ) : null}
 
@@ -122,7 +111,7 @@ export function EleBalanceScreen({navigation}: Props) {
         {records.length > 0 ? (
           <>
             <Text style={styles.sectionTitle}>缴费记录</Text>
-            <View style={styles.card}>
+            <SurfaceGroup>
               {records.map((row, idx) => (
                 <View
                   key={idx}
@@ -138,7 +127,7 @@ export function EleBalanceScreen({navigation}: Props) {
                   </View>
                 </View>
               ))}
-            </View>
+            </SurfaceGroup>
           </>
         ) : null}
 
@@ -155,31 +144,7 @@ export function EleBalanceScreen({navigation}: Props) {
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
   content: {padding: spacing.lg, paddingBottom: spacing.xxl},
-  hero: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    paddingVertical: spacing.xl,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  heroLabel: {...typography.caption, color: colors.textMuted},
-  heroValueRow: {flexDirection: 'row', alignItems: 'baseline', gap: 6},
-  heroValue: {fontSize: 44, fontWeight: '700', color: colors.primary},
-  heroUnit: {...typography.body, color: colors.textSecondary},
-  heroError: {...typography.h3, color: colors.error, marginVertical: 8},
-  heroTime: {...typography.micro, color: colors.textMuted, marginTop: 4},
-  errorBox: {
-    marginTop: spacing.md,
-    padding: spacing.md,
-    backgroundColor: colors.errorMuted,
-    borderRadius: radii.md,
-    gap: spacing.xs,
-  },
-  errorText: {...typography.caption, color: colors.error},
-  link: {...typography.body, color: colors.primary},
+  statusBlock: {marginTop: spacing.md},
   sectionTitle: {
     ...typography.label,
     color: colors.textSecondary,
@@ -189,14 +154,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
     paddingLeft: spacing.xs,
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xs,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
   },
   recordRow: {paddingVertical: spacing.md - 2, gap: 4},
   recordDivider: {

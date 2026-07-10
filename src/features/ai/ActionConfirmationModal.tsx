@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
 import {Modal, Pressable, StyleSheet, Text, View} from 'react-native';
 import {colors, radii, spacing, typography} from '../../app/theme';
 import {ActionPreview, ConfirmationSpec, ToolRisk} from '../../domain/actions';
@@ -20,6 +20,34 @@ const riskNotes: Record<ToolRisk, string> = {
   credential: '该操作涉及账号或凭证，敏感信息不会写入审计日志。',
 };
 
+type RiskTone = 'safe' | 'warning' | 'danger';
+
+const riskToneMap: Record<ToolRisk, RiskTone> = {
+  read: 'safe',
+  write_reversible: 'warning',
+  write_irreversible: 'danger',
+  payment: 'danger',
+  credential: 'danger',
+};
+
+const riskBannerTitle: Record<ToolRisk, string> = {
+  read: '只读查询',
+  write_reversible: '将执行可撤销写入',
+  write_irreversible: '将执行不可逆操作',
+  payment: '将发起支付相关操作',
+  credential: '将使用账号或凭证能力',
+};
+
+function recoveryText(preview?: ActionPreview): string {
+  if (!preview) {
+    return '执行前会记录本机审计日志。';
+  }
+  if (preview.reversible) {
+    return '通常可通过对应取消/撤销工具恢复。';
+  }
+  return '该操作可能不可直接撤销。';
+}
+
 interface ActionConfirmationModalProps {
   visible: boolean;
   tool?: AgentTool;
@@ -37,11 +65,39 @@ export function ActionConfirmationModal({
   onConfirm,
   onCancel,
 }: ActionConfirmationModalProps) {
+  const [reviewed, setReviewed] = useState(false);
   const destructive =
     spec?.destructive ||
     tool?.risk === 'payment' ||
     tool?.risk === 'write_irreversible' ||
     tool?.risk === 'credential';
+  const risk = tool?.risk ?? 'read';
+  const tone = riskToneMap[risk];
+  const requiresReview = Boolean(
+    destructive || preview?.reversible === false || preview?.requiresSecondFactor,
+  );
+  const confirmDisabled = requiresReview && !reviewed;
+  const confirmLabel = useMemo(() => {
+    if (spec?.confirmLabel) {
+      return spec.confirmLabel;
+    }
+    if (risk === 'payment') {
+      return '确认支付操作';
+    }
+    if (risk === 'write_irreversible') {
+      return '确认不可逆操作';
+    }
+    if (risk === 'credential') {
+      return '确认使用凭证';
+    }
+    return '确认执行';
+  }, [risk, spec?.confirmLabel]);
+
+  useEffect(() => {
+    if (visible) {
+      setReviewed(false);
+    }
+  }, [visible, tool?.name, spec?.title, preview?.summary]);
 
   return (
     <Modal
@@ -51,13 +107,42 @@ export function ActionConfirmationModal({
       onRequestClose={onCancel}>
       <View style={styles.backdrop}>
         <View style={styles.sheet}>
-          <Text style={styles.eyebrow}>AI 操作确认</Text>
-          <Text style={styles.title}>
-            {spec?.title ?? tool?.title ?? '确认执行操作'}
-          </Text>
-          <Text style={styles.message}>
-            {spec?.message ?? '确认后将执行该校园工具。'}
-          </Text>
+          <View style={styles.header}>
+            <Text style={styles.eyebrow}>AI 操作确认</Text>
+            <Text style={styles.title}>
+              {spec?.title ?? tool?.title ?? '确认执行操作'}
+            </Text>
+            <Text style={styles.message}>
+              {spec?.message ?? '确认后将执行该校园工具。'}
+            </Text>
+          </View>
+
+          {tool ? (
+            <View
+              style={[
+                styles.riskBanner,
+                tone === 'safe' && styles.riskBannerSafe,
+                tone === 'warning' && styles.riskBannerWarning,
+                tone === 'danger' && styles.riskBannerDanger,
+              ]}>
+              <View style={styles.riskBannerTop}>
+                <Text
+                  style={[
+                    styles.riskBadge,
+                    tone === 'safe' && styles.riskBadgeSafe,
+                    tone === 'warning' && styles.riskBadgeWarning,
+                    tone === 'danger' && styles.riskBadgeDanger,
+                  ]}>
+                  {riskLabels[tool.risk]}
+                </Text>
+                {requiresReview ? (
+                  <Text style={styles.reviewRequired}>需核对</Text>
+                ) : null}
+              </View>
+              <Text style={styles.riskBannerTitle}>{riskBannerTitle[tool.risk]}</Text>
+              <Text style={styles.riskBannerText}>{riskNotes[tool.risk]}</Text>
+            </View>
+          ) : null}
 
           {preview ? (
             <View style={styles.previewBox}>
@@ -74,8 +159,13 @@ export function ActionConfirmationModal({
                 </Text>
               ) : null}
               <Text style={styles.previewMeta}>
-                {preview.reversible ? '可通过对应取消/撤销工具恢复' : '该操作可能不可直接撤销'}
+                可恢复性：{recoveryText(preview)}
               </Text>
+              {preview.requiresSecondFactor ? (
+                <Text style={styles.previewMeta}>
+                  二次验证：可能需要在官方页面或短信/验证码中继续确认
+                </Text>
+              ) : null}
             </View>
           ) : null}
 
@@ -99,8 +189,33 @@ export function ActionConfirmationModal({
                 <Text style={styles.metaLabel}>权限</Text>
                 <Text style={styles.metaValue}>{tool.permission}</Text>
               </View>
-              <Text style={styles.riskNote}>{riskNotes[tool.risk]}</Text>
+              <View style={styles.metaRow}>
+                <Text style={styles.metaLabel}>审计</Text>
+                <Text style={styles.metaValue}>
+                  将写入本机 AI 操作记录，敏感字段会脱敏
+                </Text>
+              </View>
             </View>
+          ) : null}
+
+          {requiresReview ? (
+            <Pressable
+              onPress={() => setReviewed(value => !value)}
+              style={({pressed}) => [
+                styles.reviewBox,
+                reviewed && styles.reviewBoxChecked,
+                pressed && styles.pressed,
+              ]}>
+              <View style={[styles.checkBox, reviewed && styles.checkBoxOn]}>
+                {reviewed ? <Text style={styles.checkMark}>✓</Text> : null}
+              </View>
+              <View style={styles.reviewCopy}>
+                <Text style={styles.reviewTitle}>我已核对影响范围</Text>
+                <Text style={styles.reviewText}>
+                  已确认目标资源、账号、可恢复性和可能的后续验证步骤。
+                </Text>
+              </View>
+            </Pressable>
           ) : null}
 
           <View style={styles.actions}>
@@ -115,13 +230,15 @@ export function ActionConfirmationModal({
             </Pressable>
             <Pressable
               onPress={onConfirm}
+              disabled={confirmDisabled}
               style={({pressed}) => [
                 styles.button,
                 destructive ? styles.dangerButton : styles.confirmButton,
-                pressed && styles.pressed,
+                confirmDisabled && styles.buttonDisabled,
+                pressed && !confirmDisabled && styles.pressed,
               ]}>
               <Text style={styles.confirmText}>
-                {spec?.confirmLabel ?? '确认执行'}
+                {confirmLabel}
               </Text>
             </Pressable>
           </View>
@@ -148,6 +265,9 @@ const styles = StyleSheet.create({
     borderColor: colors.borderSubtle,
     gap: spacing.md,
   },
+  header: {
+    gap: spacing.xs,
+  },
   eyebrow: {
     ...typography.micro,
     color: colors.textMuted,
@@ -160,6 +280,64 @@ const styles = StyleSheet.create({
   },
   message: {
     ...typography.body,
+    color: colors.textSecondary,
+  },
+  riskBanner: {
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.xs,
+  },
+  riskBannerSafe: {
+    backgroundColor: colors.successMuted,
+    borderColor: colors.successMuted,
+  },
+  riskBannerWarning: {
+    backgroundColor: colors.warningMuted,
+    borderColor: colors.warningMuted,
+  },
+  riskBannerDanger: {
+    backgroundColor: colors.errorMuted,
+    borderColor: colors.errorMuted,
+  },
+  riskBannerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  riskBadge: {
+    ...typography.micro,
+    borderRadius: radii.pill,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    overflow: 'hidden',
+    fontWeight: '700',
+  },
+  riskBadgeSafe: {
+    color: colors.success,
+    backgroundColor: colors.surface,
+  },
+  riskBadgeWarning: {
+    color: colors.warning,
+    backgroundColor: colors.surface,
+  },
+  riskBadgeDanger: {
+    color: colors.error,
+    backgroundColor: colors.surface,
+  },
+  reviewRequired: {
+    ...typography.micro,
+    color: colors.textSecondary,
+    fontWeight: '700',
+  },
+  riskBannerTitle: {
+    ...typography.label,
+    color: colors.text,
+  },
+  riskBannerText: {
+    ...typography.caption,
     color: colors.textSecondary,
   },
   metaBox: {
@@ -217,10 +395,51 @@ const styles = StyleSheet.create({
     color: colors.error,
     fontWeight: '700',
   },
-  riskNote: {
+  reviewBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+  },
+  reviewBoxChecked: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryMuted,
+  },
+  checkBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    marginTop: 1,
+  },
+  checkBoxOn: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
+  },
+  checkMark: {
     ...typography.micro,
-    color: colors.textMuted,
-    marginTop: spacing.xs,
+    color: colors.textInvert,
+    fontWeight: '700',
+  },
+  reviewCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  reviewTitle: {
+    ...typography.label,
+    color: colors.text,
+  },
+  reviewText: {
+    ...typography.caption,
+    color: colors.textSecondary,
   },
   actions: {
     flexDirection: 'row',
@@ -243,6 +462,9 @@ const styles = StyleSheet.create({
   },
   dangerButton: {
     backgroundColor: colors.error,
+  },
+  buttonDisabled: {
+    opacity: 0.45,
   },
   cancelText: {
     ...typography.label,

@@ -1,4 +1,22 @@
-export type ChannelTag = 'LM_BGTG' | 'LM_ZYGG' | 'LM_YQFKZT' | 'LM_JWGG' | 'LM_KYTZ' | 'LM_HB' | 'LM_XJ_XTWBGTG' | 'LM_XSBGGG' | 'LM_TTGGG' | 'LM_JYGG' | 'LM_JYZPXX' | 'LM_XJ_GJZZSXRZ' | string;
+export const channelTags = [
+  'LM_BGTG',
+  'LM_ZYGG',
+  'LM_YQFKZT',
+  'LM_JWGG',
+  'LM_KYTZ',
+  'LM_HB',
+  'LM_XJ_XTWBGTZ',
+  'LM_XSBGGG',
+  'LM_TTGGG',
+  'LM_JYGG',
+  'LM_XJ_XSSQDT',
+  'LM_BYJYXX',
+  'LM_JYZPXX',
+  'LM_XJ_GJZZSXRZ',
+] as const;
+
+export type KnownChannelTag = (typeof channelTags)[number];
+export type ChannelTag = KnownChannelTag | string;
 
 export interface NewsSlice {
   name: string;
@@ -18,4 +36,10 @@ export interface NewsSubscription {
   keyword?: string;
   title?: string;
   order?: number;
+}
+
+export interface NewsDetail {
+  title: string;
+  content: string;
+  brief: string;
 }

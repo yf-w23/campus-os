@@ -19,10 +19,11 @@ import {RootStackParamList, RootTabParamList} from '../../app/navigation/types';
 import {colors, radii, spacing, typography} from '../../app/theme';
 import {
   Badge,
-  EmptyState,
   ListCard,
   ScreenHeader,
+  SegmentedControl,
 } from '../common/components/Ui';
+import {EmptyHint} from '../common/components/Status';
 import {selectLearning, selectUpcomingDeadlines} from '../../state/selectors';
 import {HomeworkStatus} from '../../domain/learning';
 import {stripHtml} from '../../utils/html';
@@ -182,32 +183,16 @@ export function LearningScreen({navigation, route}: Props) {
           }
         />
 
-        <View style={styles.segment}>
-          {tabs.map(item => {
-            const active = tab === item.key;
-            return (
-              <Pressable
-                key={item.key}
-                style={[styles.segmentItem, active && styles.segmentItemActive]}
-                onPress={() => setTab(item.key)}>
-                <Text
-                  style={[
-                    styles.segmentText,
-                    active && styles.segmentTextActive,
-                  ]}>
-                  {item.label}
-                </Text>
-                <Text
-                  style={[
-                    styles.segmentCount,
-                    active && styles.segmentCountActive,
-                  ]}>
-                  {counts[item.key]}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <SegmentedControl<TabKey>
+          value={tab}
+          onChange={setTab}
+          options={tabs.map(item => ({
+            value: item.key,
+            label: item.label,
+            count: counts[item.key],
+          }))}
+          style={styles.segment}
+        />
 
         {tab === 'courses' ? (
           snapshot?.courses.length ? (
@@ -232,7 +217,11 @@ export function LearningScreen({navigation, route}: Props) {
               </ListCard>
             ))
           ) : (
-            <EmptyState title={t.learning.noCourses} />
+            <EmptyHint
+              title={t.learning.noCourses}
+              message="打开首页同步校园数据后，课程列表会显示在这里。"
+              style={styles.emptyHint}
+            />
           )
         ) : null}
 
@@ -306,7 +295,11 @@ export function LearningScreen({navigation, route}: Props) {
               );
             })
           ) : (
-            <EmptyState title={t.learning.noHomework} />
+            <EmptyHint
+              title={t.learning.noHomework}
+              message="老师布置的作业和你手动添加的 DDL 会显示在这里。"
+              style={styles.emptyHint}
+            />
           )
         ) : null}
 
@@ -334,7 +327,11 @@ export function LearningScreen({navigation, route}: Props) {
               </ListCard>
             ))
           ) : (
-            <EmptyState title={t.learning.noNotifications} />
+            <EmptyHint
+              title={t.learning.noNotifications}
+              message="课程通知同步后会显示在这里。"
+              style={styles.emptyHint}
+            />
           )
         ) : null}
 
@@ -360,7 +357,11 @@ export function LearningScreen({navigation, route}: Props) {
               </ListCard>
             ))
           ) : (
-            <EmptyState title={t.learning.noFiles} />
+            <EmptyHint
+              title={t.learning.noFiles}
+              message="课程资料和附件同步后会显示在这里。"
+              style={styles.emptyHint}
+            />
           )
         ) : null}
       </ScrollView>
@@ -440,28 +441,8 @@ const styles = StyleSheet.create({
     lineHeight: 28,
   },
   segment: {
-    flexDirection: 'row',
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radii.md,
-    padding: 3,
     marginBottom: spacing.lg,
   },
-  segmentItem: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.sm + 2,
-    borderRadius: radii.sm,
-    gap: 4,
-  },
-  segmentItemActive: {
-    backgroundColor: colors.surface,
-  },
-  segmentText: {...typography.caption, color: colors.textMuted},
-  segmentTextActive: {color: colors.text, fontWeight: '600'},
-  segmentCount: {...typography.micro, color: colors.textMuted},
-  segmentCountActive: {color: colors.primary},
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -471,6 +452,7 @@ const styles = StyleSheet.create({
   cardTitle: {...typography.label, color: colors.text, flex: 1, fontSize: 15},
   cardMeta: {...typography.caption, color: colors.textSecondary},
   cardBody: {...typography.caption, color: colors.textSecondary, marginTop: 2},
+  emptyHint: {paddingVertical: spacing.xxl},
   deleteInline: {alignSelf: 'flex-start', paddingVertical: spacing.xs},
   deleteInlineText: {
     ...typography.caption,

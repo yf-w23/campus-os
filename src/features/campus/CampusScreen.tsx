@@ -28,12 +28,18 @@ interface Entry {
     | 'dormitory'
     | 'finance'
     | 'network'
+    | 'news'
     | 'reservation'
     | 'mail';
   icon: ImageSourcePropType;
 }
 
 const entries: Entry[] = [
+  {
+    key: 'CampusNews',
+    i18nKey: 'news',
+    icon: uiImages.campusNews,
+  },
   {
     key: 'CampusClassroom',
     i18nKey: 'classroom',

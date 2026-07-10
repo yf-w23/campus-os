@@ -1,6 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Linking,
   Pressable,
@@ -14,7 +13,7 @@ import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {WebView} from 'react-native-webview';
 import {colors, radii, spacing, typography} from '../../app/theme';
 import {DetailHeader} from '../common/components/Ui';
-import {PrimaryButton} from '../common/components/Buttons';
+import {InlineLoader, StateBlock} from '../common/components/Status';
 import {RootStackParamList} from '../../app/navigation/types';
 import {
   MAIL_FOLDERS,
@@ -182,16 +181,16 @@ export function CampusMailDetailScreen({route, navigation}: Props) {
         onRight={load}
       />
       {loading ? (
-        <View style={styles.loading}>
-          <ActivityIndicator color={colors.primary} />
-          <Text style={styles.loadingText}>加载邮件…</Text>
-        </View>
+        <InlineLoader label="加载邮件..." style={styles.loading} />
       ) : error ? (
-        <View style={styles.errorBox}>
-          <Text style={styles.errorTitle}>邮件详情加载失败</Text>
-          <Text style={styles.errorText}>{error}</Text>
-          <PrimaryButton label="重试" onPress={load} variant="ghost" />
-        </View>
+        <StateBlock
+          title="邮件详情加载失败"
+          message={error}
+          tone="error"
+          actionLabel="重试"
+          onAction={load}
+          style={styles.statusBlock}
+        />
       ) : message ? (
         <ScrollView contentContainerStyle={styles.content}>
           <Text style={styles.subject}>{message.subject}</Text>
@@ -361,7 +360,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.sm,
   },
-  loadingText: {...typography.caption, color: colors.textMuted},
+  statusBlock: {margin: spacing.lg},
   content: {padding: spacing.lg, paddingBottom: spacing.xxl},
   subject: {...typography.h2, color: colors.text, marginBottom: spacing.md},
   metaCard: {
@@ -423,7 +422,4 @@ const styles = StyleSheet.create({
   },
   htmlView: {backgroundColor: colors.surface},
   bodyText: {...typography.body, color: colors.text, lineHeight: 24},
-  errorBox: {margin: spacing.lg, padding: spacing.lg, gap: spacing.md},
-  errorTitle: {...typography.h3, color: colors.error},
-  errorText: {...typography.body, color: colors.error},
 });

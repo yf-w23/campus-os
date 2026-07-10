@@ -18,6 +18,7 @@ import {useTranslation} from '../../app/i18n';
 import {RootTabParamList} from '../../app/navigation/types';
 import {colors, radii, spacing, typography} from '../../app/theme';
 import {PersonalEvent} from '../../domain/schedule';
+import {SemesterInfo} from '../../domain/campusSchedule';
 import {
   mergeScheduleForDate,
   MergedScheduleItem,
@@ -39,8 +40,9 @@ import {
   weekDatesContaining,
   weekdayLabelForDate,
 } from '../../utils/weekDates';
-import {Badge, EmptyState, ScreenHeader} from '../common/components/Ui';
+import {Badge, ScreenHeader} from '../common/components/Ui';
 import {PrimaryButton} from '../common/components/Buttons';
+import {EmptyHint, StateBlock} from '../common/components/Status';
 import {
   buildGridBlocksForWeek,
   buildGridBlocksFromFlatEvents,
@@ -125,6 +127,7 @@ export function ScheduleScreen({navigation}: Props) {
   const [naturalWeekOffset, setNaturalWeekOffset] = useState(0);
   const [selectedDate, setSelectedDate] = useState(() => todayLocalISO());
   const [userPickedDate, setUserPickedDate] = useState(false);
+  const [semesterModalOpen, setSemesterModalOpen] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [formTitle, setFormTitle] = useState('');
@@ -133,7 +136,39 @@ export function ScheduleScreen({navigation}: Props) {
   const [formEnd, setFormEnd] = useState('10:00');
   const [formNote, setFormNote] = useState('');
 
+  const hasCampusCalendar = Boolean(calendar);
   const hasSemesterSchedule = Boolean(calendar && baseSchedule.length > 0);
+  const semesterOptions = useMemo(() => {
+    if (!calendar) {
+      return [] as {
+        key: string;
+        label: string;
+        semester: SemesterInfo;
+        semesterIndex?: number;
+      }[];
+    }
+    const current = calendar.currentSemester ?? {
+      firstDay: calendar.firstDay,
+      semesterId: calendar.semesterId,
+      semesterName: calendar.semesterName,
+      weekCount: calendar.weekCount,
+    };
+    return [
+      {
+        key: 'current',
+        label: '当前学期',
+        semester: current,
+        semesterIndex: undefined,
+      },
+      ...calendar.nextSemesterList.map((semester, index) => ({
+        key: `next-${semester.semesterId || index}`,
+        label: `下一学期 ${index + 1}`,
+        semester,
+        semesterIndex: index,
+      })),
+    ];
+  }, [calendar]);
+  const selectedSemesterIndex = calendar?.selectedSemesterIndex;
   const currentSemesterIndex = useMemo(
     () =>
       calendar
@@ -174,10 +209,10 @@ export function ScheduleScreen({navigation}: Props) {
 
   const courses = useMemo(
     () =>
-      hasSemesterSchedule
+      hasCampusCalendar
         ? flattenSchedulesToEvents(baseSchedule)
         : flatCourses,
-    [baseSchedule, flatCourses, hasSemesterSchedule],
+    [baseSchedule, flatCourses, hasCampusCalendar],
   );
 
   const weekCourses = useMemo(
@@ -271,14 +306,28 @@ export function ScheduleScreen({navigation}: Props) {
     ],
   );
 
-  const handleSync = useCallback(async () => {
+  const syncForSemester = useCallback(async (semesterIndex?: number) => {
     setSyncing(true);
     try {
-      await dispatch(syncCampusData());
+      await dispatch(syncCampusData({semesterIndex}));
     } finally {
       setSyncing(false);
     }
   }, [dispatch]);
+
+  const handleSync = useCallback(() => {
+    syncForSemester(selectedSemesterIndex).catch(() => undefined);
+  }, [selectedSemesterIndex, syncForSemester]);
+
+  const handleSelectSemester = useCallback(
+    (semesterIndex?: number) => {
+      setSemesterModalOpen(false);
+      setNaturalWeekOffset(0);
+      setUserPickedDate(false);
+      syncForSemester(semesterIndex).catch(() => undefined);
+    },
+    [syncForSemester],
+  );
 
   const handleAdd = () => {
     const title = formTitle.trim();
@@ -357,15 +406,15 @@ export function ScheduleScreen({navigation}: Props) {
   const showTodayJump = calendar
     ? weekIndex !== currentSemesterIndex
     : naturalWeekOffset !== 0;
-  const subtitle = hasCourses
-    ? hasSemesterSchedule && calendar
+  const subtitle = calendar
+    ? weekCourses.length > 0
+      ? `${calendar.semesterName} · ${weekLabel} · ${weekCourses.length} 节课`
+      : `${calendar.semesterName} · ${weekLabel} 暂无课程`
+    : hasCourses
       ? weekCourses.length > 0
-        ? `${calendar.semesterName} · ${weekLabel} · ${weekCourses.length} 节课`
-        : `${calendar.semesterName} · ${weekLabel} 暂无课程`
-      : weekCourses.length > 0
         ? `本周 ${weekCourses.length} 节课 · ${weekLabel}`
         : `已加载 ${courses.length} 条课表，本周暂无匹配 · ${weekLabel}`
-    : learningError ?? scheduleError ?? '请先在首页同步校园数据';
+      : learningError ?? scheduleError ?? '请先在首页同步校园数据';
 
   const syncBusy = syncing || loading;
   const weekGridHeight = Math.min(560, Math.max(430, windowHeight * 0.48));
@@ -395,6 +444,23 @@ export function ScheduleScreen({navigation}: Props) {
               </View>
             }
           />
+
+          {calendar ? (
+            <Pressable
+              style={({pressed}) => [
+                styles.semesterSelector,
+                pressed && styles.semesterSelectorPressed,
+              ]}
+              onPress={() => setSemesterModalOpen(true)}>
+              <View style={styles.semesterSelectorBody}>
+                <Text style={styles.semesterSelectorLabel}>学期</Text>
+                <Text style={styles.semesterSelectorTitle} numberOfLines={1}>
+                  {calendar.semesterName}
+                </Text>
+              </View>
+              <Text style={styles.semesterSelectorAction}>切换</Text>
+            </Pressable>
+          ) : null}
 
           <View style={styles.weekNav}>
             <Pressable
@@ -470,9 +536,15 @@ export function ScheduleScreen({navigation}: Props) {
         </View>
 
         {learningError && !hasCourses ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{learningError}</Text>
-          </View>
+          <StateBlock
+            title="课表同步失败"
+            message={learningError}
+            tone="error"
+            actionLabel={syncBusy ? '同步中…' : '同步课表'}
+            onAction={handleSync}
+            compact
+            style={styles.statusBlock}
+          />
         ) : null}
 
         {gridBlocks.length > 0 ? (
@@ -497,19 +569,22 @@ export function ScheduleScreen({navigation}: Props) {
           </Text>
           {dayItems.length === 0 ? (
             <>
-              <EmptyState
+              <EmptyHint
                 title={
                   weekHasItems
                     ? `${weekdayLabelForDate(selectedDate)}暂无课程`
                     : t.schedule.emptyWeek
                 }
-                description={
-                  hasCourses
+                message={
+                  calendar && !hasCourses
+                    ? '该学期暂未拉取到课程，可切换学期或重新同步'
+                    : hasCourses
                     ? weekCourses.length > 0
                       ? '请点击上方有圆点的日期（如周五）查看课程'
                       : '课表日期与本周不匹配，可切换上一周/下一周，或重新同步'
                     : '请打开首页点击同步，或在此点击「同步」拉取课表'
                 }
+                style={styles.emptyHint}
               />
               {weekCourses.length > 0 ? (
                 <View style={styles.weekOverview}>
@@ -572,6 +647,60 @@ export function ScheduleScreen({navigation}: Props) {
           ) : null}
         </View>
       </ScrollView>
+
+      <Modal visible={semesterModalOpen} animationType="slide" transparent>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalSheet}>
+            <Text style={styles.modalTitle}>选择学期</Text>
+            <Text style={styles.modalDate}>
+              日程会按所选学期重新同步教务课表
+            </Text>
+            <View style={styles.semesterOptionList}>
+              {semesterOptions.map(option => {
+                const active =
+                  (option.semesterIndex ?? -1) === (selectedSemesterIndex ?? -1);
+                return (
+                  <Pressable
+                    key={option.key}
+                    onPress={() => handleSelectSemester(option.semesterIndex)}
+                    style={({pressed}) => [
+                      styles.semesterOption,
+                      active && styles.semesterOptionActive,
+                      pressed && styles.semesterOptionPressed,
+                    ]}>
+                    <View style={styles.semesterOptionBody}>
+                      <Text
+                        style={[
+                          styles.semesterOptionLabel,
+                          active && styles.semesterOptionLabelActive,
+                        ]}>
+                        {option.label}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.semesterOptionName,
+                          active && styles.semesterOptionNameActive,
+                        ]}
+                        numberOfLines={1}>
+                        {option.semester.semesterName}
+                      </Text>
+                      <Text style={styles.semesterOptionMeta}>
+                        {option.semester.weekCount} 周 · {option.semester.firstDay} 开始
+                      </Text>
+                    </View>
+                    {active ? <Text style={styles.semesterOptionCheck}>已选</Text> : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+            <PrimaryButton
+              label={t.schedule.cancel}
+              variant="ghost"
+              onPress={() => setSemesterModalOpen(false)}
+            />
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={modalOpen} animationType="slide" transparent>
         <View style={styles.modalBackdrop}>
@@ -644,6 +773,23 @@ const styles = StyleSheet.create({
   headerActions: {flexDirection: 'row', gap: spacing.md, alignItems: 'center'},
   headerLink: {...typography.caption, color: colors.primary, fontWeight: '600'},
   headerLinkDim: {opacity: 0.5},
+  semesterSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+    gap: spacing.md,
+  },
+  semesterSelectorPressed: {opacity: 0.74},
+  semesterSelectorBody: {flex: 1, gap: 2},
+  semesterSelectorLabel: {...typography.micro, color: colors.textMuted},
+  semesterSelectorTitle: {...typography.body, color: colors.text, fontWeight: '600'},
+  semesterSelectorAction: {...typography.caption, color: colors.primary, fontWeight: '600'},
   weekNav: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -688,8 +834,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     marginTop: 4,
   },
-  errorBox: {marginHorizontal: spacing.lg, marginBottom: spacing.sm},
-  errorText: {...typography.caption, color: colors.error},
+  statusBlock: {marginHorizontal: spacing.lg, marginBottom: spacing.sm},
   gridFlex: {
     paddingHorizontal: spacing.sm,
     marginBottom: spacing.lg,
@@ -701,6 +846,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing.sm,
   },
+  emptyHint: {paddingVertical: spacing.lg},
   todayCard: {
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
@@ -757,6 +903,29 @@ const styles = StyleSheet.create({
   },
   modalTitle: {...typography.h2, color: colors.text},
   modalDate: {...typography.caption, color: colors.textMuted, marginBottom: spacing.xs},
+  semesterOptionList: {gap: spacing.sm, marginBottom: spacing.md},
+  semesterOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    backgroundColor: colors.background,
+    padding: spacing.md,
+  },
+  semesterOptionActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryMuted,
+  },
+  semesterOptionPressed: {opacity: 0.74},
+  semesterOptionBody: {flex: 1, gap: 2},
+  semesterOptionLabel: {...typography.micro, color: colors.textMuted},
+  semesterOptionLabelActive: {color: colors.primary},
+  semesterOptionName: {...typography.body, color: colors.text, fontWeight: '600'},
+  semesterOptionNameActive: {color: colors.primary},
+  semesterOptionMeta: {...typography.caption, color: colors.textMuted},
+  semesterOptionCheck: {...typography.caption, color: colors.primary, fontWeight: '600'},
   input: {
     backgroundColor: colors.background,
     borderRadius: radii.md,

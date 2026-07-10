@@ -1,3 +1,5 @@
+import {NewsSlice} from '../../domain/news';
+
 export type RootTabParamList = {
   Home: undefined;
   Learning:
@@ -55,6 +57,10 @@ export type RootStackParamList = {
     subject?: string;
     content?: string;
   };
+  CampusNews: undefined;
+  CampusNewsDetail: {
+    news: NewsSlice;
+  };
   /** 电费余额（native）*/
   CampusEleBalance: undefined;
   /** 电费充值（native）*/
@@ -62,6 +68,10 @@ export type RootStackParamList = {
   CampusReservation: undefined;
   /** 监控管理 */
   Monitors: undefined;
+  /** AI 工具权限管理 */
+  AIPermissions: undefined;
+  /** 本地缓存与同步新鲜度 */
+  CacheFreshness: undefined;
   /** 图书馆座位 / 研读间 native 浏览页 */
   CampusLibrary: undefined;
   /** 单个楼层的分区列表（楼层 → 分区） */

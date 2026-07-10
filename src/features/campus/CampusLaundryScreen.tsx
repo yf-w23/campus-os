@@ -1,6 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
-  ActivityIndicator,
   Image,
   Pressable,
   ScrollView,
@@ -13,8 +12,8 @@ import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {colors, radii, spacing, typography} from '../../app/theme';
 import {uiImages} from '../../app/assets/uiImages';
 import {RootStackParamList} from '../../app/navigation/types';
-import {DetailHeader} from '../common/components/Ui';
-import {PrimaryButton} from '../common/components/Buttons';
+import {DetailHeader, SurfaceGroup} from '../common/components/Ui';
+import {EmptyHint, InlineLoader, StateBlock} from '../common/components/Status';
 import {
   LaundryBuilding,
   LaundryBuildingGroup,
@@ -86,19 +85,23 @@ export function CampusLaundryScreen({navigation}: Props) {
         </View>
 
         {error ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
-            <PrimaryButton label="重试" onPress={load} variant="ghost" />
-          </View>
+          <StateBlock
+            title="洗衣机楼宇加载失败"
+            message={error}
+            tone="error"
+            actionLabel="重试"
+            onAction={load}
+            style={styles.statusBlock}
+          />
         ) : null}
 
         {loading ? (
-          <ActivityIndicator color={colors.primary} style={styles.loader} />
+          <InlineLoader label="正在同步楼宇列表" style={styles.loader} />
         ) : (
           groups.map(group => (
             <View key={group.name} style={styles.section}>
               <Text style={styles.sectionTitle}>{group.name}</Text>
-              <View style={styles.card}>
+              <SurfaceGroup style={styles.card}>
                 {group.buildings.map((building, index) => (
                   <Pressable
                     key={`${building.platform}-${building.id}`}
@@ -124,13 +127,17 @@ export function CampusLaundryScreen({navigation}: Props) {
                     <Text style={styles.chev}>›</Text>
                   </Pressable>
                 ))}
-              </View>
+              </SurfaceGroup>
             </View>
           ))
         )}
 
         {!loading && !error && groups.length === 0 ? (
-          <Text style={styles.empty}>暂无可查询洗衣机楼宇</Text>
+          <EmptyHint
+            title="暂无可查询洗衣机楼宇"
+            message="可以稍后刷新，或从宿舍服务入口重新进入。"
+            style={styles.empty}
+          />
         ) : null}
       </ScrollView>
     </SafeAreaView>
@@ -161,14 +168,7 @@ const styles = StyleSheet.create({
   heroTitle: {...typography.h2, color: colors.text},
   heroSub: {...typography.caption, color: colors.textSecondary},
   loader: {marginVertical: spacing.xxl},
-  errorBox: {
-    marginTop: spacing.md,
-    padding: spacing.md,
-    backgroundColor: colors.errorMuted,
-    borderRadius: radii.md,
-    gap: spacing.sm,
-  },
-  errorText: {...typography.caption, color: colors.error},
+  statusBlock: {marginTop: spacing.md},
   section: {marginTop: spacing.lg},
   sectionTitle: {
     ...typography.label,
@@ -180,10 +180,8 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.xs,
   },
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
     overflow: 'hidden',
   },
   row: {
@@ -215,9 +213,6 @@ const styles = StyleSheet.create({
   },
   pressed: {backgroundColor: colors.surfaceAlt},
   empty: {
-    ...typography.body,
-    color: colors.textMuted,
-    textAlign: 'center',
-    marginTop: spacing.xxl,
+    marginTop: spacing.xl,
   },
 });

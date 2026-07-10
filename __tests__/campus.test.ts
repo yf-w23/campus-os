@@ -229,6 +229,34 @@ describe('agent tools', () => {
       }),
     ).toBe(true);
   });
+
+  it('exposes campus news search as read-only agent tools', () => {
+    const names = ['get_news_list', 'search_news', 'get_news_detail'];
+    const specNames = toolSpecs().map(spec => {
+      const fn = spec.function as {name?: string} | undefined;
+      return fn?.name;
+    });
+
+    for (const name of names) {
+      const tool = getToolByName(name);
+      expect(tool?.risk).toBe('read');
+      expect(tool?.permission).toBe('campus.news.read');
+      expect(specNames).toContain(name);
+    }
+  });
+
+  it('filters tools by disabled AI permissions', () => {
+    const disabledPermission = 'campus.news.read';
+    const specNames = toolSpecs([disabledPermission]).map(spec => {
+      const fn = spec.function as {name?: string} | undefined;
+      return fn?.name;
+    });
+
+    expect(getToolByName('search_news', [disabledPermission])).toBeUndefined();
+    expect(specNames).not.toContain('get_news_list');
+    expect(specNames).not.toContain('search_news');
+    expect(specNames).not.toContain('get_news_detail');
+  });
 });
 
 describe('home workbench', () => {

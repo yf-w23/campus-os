@@ -1,6 +1,5 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {
-  ActivityIndicator,
   Linking,
   Pressable,
   StyleSheet,
@@ -13,6 +12,7 @@ import CookieManager from '@react-native-cookies/cookies';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {colors, spacing, typography} from '../../app/theme';
 import {RootStackParamList} from '../../app/navigation/types';
+import {InlineLoader} from '../common/components/Status';
 import {LEARN_BASE} from '../../services/webvpn/constants';
 
 const COOKIE_DOMAINS = [
@@ -79,10 +79,7 @@ export function InAppViewerScreen({route, navigation}: Props) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <Header title={title || '查看'} onBack={() => navigation.goBack()} />
-        <View style={styles.loading}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>同步会话…</Text>
-        </View>
+        <InlineLoader label="同步会话..." style={styles.loading} />
       </SafeAreaView>
     );
   }
@@ -114,10 +111,7 @@ export function InAppViewerScreen({route, navigation}: Props) {
           style={styles.web}
         />
         {loading ? (
-          <View style={styles.loading}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>加载中…</Text>
-          </View>
+          <InlineLoader label="加载中..." style={styles.loading} />
         ) : null}
       </View>
     </SafeAreaView>
@@ -194,5 +188,4 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(10, 10, 11, 0.6)',
     gap: spacing.sm,
   },
-  loadingText: {...typography.caption, color: colors.textSecondary},
 });

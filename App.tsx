@@ -42,6 +42,7 @@ import {loadAIApiKey} from './src/storage/secureStorage';
 import {tsinghuaAuthService} from './src/services/auth/tsinghuaAuth';
 import {syncCampusData} from './src/state/thunks/syncCampusData';
 import {runWorkflowChecks} from './src/services/workflow/WorkflowEngine';
+import {syncBackgroundWorkflowScheduler} from './src/services/workflow/backgroundWorkflow';
 import {colors} from './src/app/theme';
 
 function Bootstrap() {
@@ -117,6 +118,7 @@ function Bootstrap() {
           './src/app/navigation/AppNavigator'
         );
         setNavComponent(() => mod.AppNavigator);
+        void syncBackgroundWorkflowScheduler().catch(() => undefined);
       } catch (error) {
         const message =
           error instanceof Error ? error.message : '应用初始化失败，请重启 App';
@@ -131,6 +133,7 @@ function Bootstrap() {
         const check = async () => {
           try {
             await runWorkflowChecks();
+            await syncBackgroundWorkflowScheduler();
           } catch {
             // 静默失败
           }

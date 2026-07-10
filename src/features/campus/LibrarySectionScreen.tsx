@@ -4,7 +4,6 @@
  */
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   ScrollView,
@@ -15,7 +14,8 @@ import {
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {colors, radii, shadows, spacing, typography} from '../../app/theme';
-import {DetailHeader, EmptyState} from '../common/components/Ui';
+import {DetailHeader, SegmentedControl} from '../common/components/Ui';
+import {EmptyHint, InlineLoader, StateBlock} from '../common/components/Status';
 import {RootStackParamList} from '../../app/navigation/types';
 import {
   bookLibrarySeat,
@@ -157,38 +157,35 @@ export function LibrarySectionScreen({navigation, route}: Props) {
         onRight={() => !loading && load()}
       />
 
-      <View style={styles.dateRow}>
-        {(['今天', '明天'] as const).map((label, idx) => {
-          const active = (idx as DateChoice) === dateChoice;
-          return (
-            <Pressable
-              key={label}
-              style={[styles.dateChip, active && styles.dateChipActive]}
-              onPress={() => setDateChoice(idx as DateChoice)}>
-              <Text
-                style={[styles.dateChipText, active && styles.dateChipTextActive]}>
-                {label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <SegmentedControl<DateChoice>
+        value={dateChoice}
+        onChange={setDateChoice}
+        options={[
+          {value: 0 as DateChoice, label: '今天'},
+          {value: 1 as DateChoice, label: '明天'},
+        ]}
+        style={styles.dateRow}
+      />
 
       {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.hint}>正在加载座位…</Text>
-        </View>
+        <InlineLoader label="正在加载座位..." style={styles.center} />
       ) : error ? (
         <View style={styles.center}>
-          <Text style={styles.errorTitle}>加载失败</Text>
-          <Text style={styles.errorMsg}>{error}</Text>
-          <Pressable style={styles.retry} onPress={load}>
-            <Text style={styles.retryText}>重试</Text>
-          </Pressable>
+          <StateBlock
+            title="座位列表加载失败"
+            message={error}
+            tone="error"
+            actionLabel="重试"
+            onAction={load}
+            style={styles.statusBlock}
+          />
         </View>
       ) : seats.length === 0 ? (
-        <EmptyState title="无座位数据" description="该分区暂无可显示的座位" />
+        <EmptyHint
+          title="无座位数据"
+          message="该分区暂无可显示的座位，可以切换日期或返回选择其它分区。"
+          style={styles.center}
+        />
       ) : (
         <>
           <View style={styles.statRow}>
@@ -310,22 +307,9 @@ function StatCell({
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
   dateRow: {
-    flexDirection: 'row',
-    padding: 4,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radii.md,
     marginHorizontal: spacing.lg,
     marginTop: spacing.md,
   },
-  dateChip: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-    borderRadius: radii.sm,
-  },
-  dateChipActive: {backgroundColor: colors.surface},
-  dateChipText: {...typography.caption, color: colors.textSecondary},
-  dateChipTextActive: {color: colors.text, fontWeight: '600'},
 
   statRow: {
     flexDirection: 'row',
@@ -404,19 +388,5 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.lg,
   },
-  hint: {...typography.caption, color: colors.textSecondary},
-  errorTitle: {...typography.h3, color: colors.error},
-  errorMsg: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  retry: {
-    marginTop: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.primary,
-    borderRadius: radii.md,
-  },
-  retryText: {...typography.label, color: colors.textInvert},
+  statusBlock: {alignSelf: 'stretch'},
 });

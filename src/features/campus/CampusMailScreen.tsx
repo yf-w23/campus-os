@@ -1,6 +1,5 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
   Image,
@@ -17,6 +16,7 @@ import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {colors, radii, spacing, typography} from '../../app/theme';
 import {DetailHeader} from '../common/components/Ui';
 import {PrimaryButton} from '../common/components/Buttons';
+import {EmptyHint, InlineLoader, StateBlock} from '../common/components/Status';
 import {RootStackParamList} from '../../app/navigation/types';
 import {uiImages} from '../../app/assets/uiImages';
 import {MailMessageSummary} from '../../services/campus/mail';
@@ -204,10 +204,7 @@ export function CampusMailScreen({navigation}: Props) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <DetailHeader title="清华邮箱" onBack={() => navigation.goBack()} />
-        <View style={styles.loading}>
-          <ActivityIndicator color={colors.primary} />
-          <Text style={styles.loadingText}>检查邮箱配置…</Text>
-        </View>
+        <InlineLoader label="检查邮箱配置..." style={styles.loading} />
       </SafeAreaView>
     );
   }
@@ -327,21 +324,18 @@ export function CampusMailScreen({navigation}: Props) {
       </View>
 
       {error ? (
-        <View style={styles.errorBox}>
-          <Text style={styles.errorText}>{error}</Text>
-          <PrimaryButton
-            label="重试"
-            onPress={() => load().catch(() => undefined)}
-            variant="ghost"
-          />
-        </View>
+        <StateBlock
+          title="邮件加载失败"
+          message={error}
+          tone="error"
+          actionLabel="重试"
+          onAction={() => load().catch(() => undefined)}
+          style={styles.statusBlock}
+        />
       ) : null}
 
       {loading ? (
-        <View style={styles.loading}>
-          <ActivityIndicator color={colors.primary} />
-          <Text style={styles.loadingText}>加载邮件…</Text>
-        </View>
+        <InlineLoader label="加载邮件..." style={styles.loading} />
       ) : (
         <FlatList
           data={messages}
@@ -356,9 +350,15 @@ export function CampusMailScreen({navigation}: Props) {
             />
           }
           ListEmptyComponent={
-            <Text style={styles.emptyText}>
-              {query.trim() ? '没有找到相关邮件' : '这个文件夹暂无邮件'}
-            </Text>
+            <EmptyHint
+              title={query.trim() ? '没有找到相关邮件' : '这个文件夹暂无邮件'}
+              message={
+                query.trim()
+                  ? '可以换个关键词，或清空搜索后刷新当前文件夹。'
+                  : '下拉刷新，或切换到其它邮件文件夹查看。'
+              }
+              style={styles.emptyHint}
+            />
           }
         />
       )}
@@ -497,21 +497,13 @@ const styles = StyleSheet.create({
   },
   folderText: {...typography.caption, color: colors.textSecondary},
   folderTextActive: {color: colors.primary, fontWeight: '600'},
-  errorBox: {
-    margin: spacing.lg,
-    padding: spacing.md,
-    borderRadius: radii.lg,
-    backgroundColor: colors.errorMuted,
-    gap: spacing.sm,
-  },
-  errorText: {...typography.caption, color: colors.error},
+  statusBlock: {margin: spacing.lg},
   loading: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
   },
-  loadingText: {...typography.caption, color: colors.textMuted},
   listContent: {
     padding: spacing.lg,
     paddingTop: spacing.md,
@@ -540,10 +532,5 @@ const styles = StyleSheet.create({
   date: {...typography.micro, color: colors.textMuted},
   subject: {...typography.body, color: colors.text, fontWeight: '500'},
   brief: {...typography.caption, color: colors.textMuted},
-  emptyText: {
-    ...typography.body,
-    color: colors.textMuted,
-    textAlign: 'center',
-    paddingVertical: spacing.xxl,
-  },
+  emptyHint: {paddingVertical: spacing.xxl},
 });

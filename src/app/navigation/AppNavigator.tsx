@@ -26,6 +26,10 @@ import {EleBalanceScreen} from '../../features/campus/EleBalanceScreen';
 import {EleRechargeScreen} from '../../features/campus/EleRechargeScreen';
 import {CampusFinanceScreen} from '../../features/campus/CampusFinanceScreen';
 import {CampusNetworkScreen} from '../../features/campus/CampusNetworkScreen';
+import {
+  CampusNewsDetailScreen,
+  CampusNewsScreen,
+} from '../../features/campus/CampusNewsScreen';
 import {CampusLaundryScreen} from '../../features/campus/CampusLaundryScreen';
 import {CampusLaundryDetailScreen} from '../../features/campus/CampusLaundryDetailScreen';
 import {CampusMailComposeScreen} from '../../features/campus/CampusMailComposeScreen';
@@ -34,6 +38,8 @@ import {CampusMailViewerScreen} from '../../features/campus/CampusMailViewerScre
 import {LibraryNativeScreen} from '../../features/campus/LibraryNativeScreen';
 import {LibraryFloorScreen} from '../../features/campus/LibraryFloorScreen';
 import {LibrarySectionScreen} from '../../features/campus/LibrarySectionScreen';
+import {AIPermissionsScreen} from '../../features/settings/AIPermissionsScreen';
+import {CacheFreshnessScreen} from '../../features/settings/CacheFreshnessScreen';
 import {MonitorsScreen} from '../../features/settings/MonitorsScreen';
 import {AIScreen} from '../../features/ai/AIScreen';
 import {SettingsScreen} from '../../features/settings/SettingsScreen';
@@ -234,6 +240,11 @@ export function AppNavigator() {
               name="CampusNetwork"
               component={CampusNetworkScreen}
             />
+            <Stack.Screen name="CampusNews" component={CampusNewsScreen} />
+            <Stack.Screen
+              name="CampusNewsDetail"
+              component={CampusNewsDetailScreen}
+            />
             <Stack.Screen name="CampusMail" component={MailScreen} />
             <Stack.Screen
               name="CampusMailDetail"
@@ -273,6 +284,14 @@ export function AppNavigator() {
               component={LibrarySectionScreen}
             />
             <Stack.Screen name="Monitors" component={MonitorsScreen} />
+            <Stack.Screen
+              name="AIPermissions"
+              component={AIPermissionsScreen}
+            />
+            <Stack.Screen
+              name="CacheFreshness"
+              component={CacheFreshnessScreen}
+            />
           </>
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} />

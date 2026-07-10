@@ -1,6 +1,5 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Linking,
   Pressable,
@@ -13,8 +12,9 @@ import {
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {colors, radii, spacing, typography} from '../../app/theme';
-import {DetailHeader, InfoRow} from '../common/components/Ui';
+import {DetailHeader, InfoRow, SurfaceGroup} from '../common/components/Ui';
 import {PrimaryButton} from '../common/components/Buttons';
+import {InlineLoader} from '../common/components/Status';
 import {RootStackParamList} from '../../app/navigation/types';
 import {
   EleRoomInfo,
@@ -92,12 +92,9 @@ export function EleRechargeScreen({navigation}: Props) {
       <DetailHeader title="电费充值" onBack={() => navigation.goBack()} />
       <ScrollView contentContainerStyle={styles.content}>
         {/* 房间信息 + 余额 */}
-        <View style={styles.card}>
+        <SurfaceGroup>
           {loading ? (
-            <View style={styles.loadingRow}>
-              <ActivityIndicator color={colors.primary} />
-              <Text style={styles.loadingText}>正在读取房间信息…</Text>
-            </View>
+            <InlineLoader label="正在读取房间信息..." style={styles.cardLoader} />
           ) : (
             <>
               <InfoRow label="户名" value={room?.userName} />
@@ -109,7 +106,7 @@ export function EleRechargeScreen({navigation}: Props) {
               />
             </>
           )}
-        </View>
+        </SurfaceGroup>
 
         {/* 充值金额 */}
         <Text style={styles.sectionTitle}>充值金额</Text>
@@ -147,10 +144,7 @@ export function EleRechargeScreen({navigation}: Props) {
 
         <View style={{height: spacing.lg}} />
         {processing ? (
-          <View style={styles.processingRow}>
-            <ActivityIndicator color={colors.primary} />
-            <Text style={styles.loadingText}>正在发起支付…</Text>
-          </View>
+          <InlineLoader label="正在发起支付..." style={styles.processingLoader} />
         ) : (
           <PrimaryButton
             label={valid ? `支付宝充值 ${money} 元` : '请输入充值金额'}
@@ -171,22 +165,7 @@ export function EleRechargeScreen({navigation}: Props) {
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
   content: {padding: spacing.lg, paddingBottom: spacing.xxl},
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xs,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  loadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.lg,
-    justifyContent: 'center',
-  },
-  loadingText: {...typography.caption, color: colors.textSecondary},
+  cardLoader: {paddingVertical: spacing.lg},
   sectionTitle: {
     ...typography.label,
     color: colors.textSecondary,
@@ -231,13 +210,7 @@ const styles = StyleSheet.create({
     marginLeft: spacing.sm,
   },
   hint: {...typography.micro, color: colors.textMuted, marginTop: spacing.sm},
-  processingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-  },
+  processingLoader: {paddingVertical: spacing.md},
   webBtn: {alignItems: 'center', paddingVertical: spacing.md, marginTop: spacing.sm},
   webBtnText: {...typography.body, color: colors.primary},
 });
