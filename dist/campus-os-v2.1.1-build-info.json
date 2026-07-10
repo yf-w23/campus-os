@@ -7,10 +7,10 @@
     "artifact":  "campus-os-v2.1.1-android-arm64.apk",
     "artifactPath":  "D:\\3-2\\campus-os-2.1.1\\campus-os\\dist\\campus-os-v2.1.1-android-arm64.apk",
     "sizeBytes":  36638283,
-    "sha256":  "874E8F8CF4BCF3C2B8958E1FD355630C8D692C611EF983D8158D29F099592724",
+    "sha256":  "413C4FB53352387C2DBC2B554F32BF60D49489871849792AE305163A1F894077",
     "architectures":  [
                           "arm64-v8a"
                       ],
     "signing":  "debug-keystore",
-    "builtAt":  "2026-07-03T15:11:54.3756876Z"
+    "builtAt":  "2026-07-10T16:29:36.4155996Z"
 }
